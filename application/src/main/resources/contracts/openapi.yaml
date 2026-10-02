@@ -1,0 +1,802 @@
+openapi: 3.0.3
+info:
+  title: Work Order API
+  description: Microservice responsible for opening, managing, estimating and tracking Work Orders, Customer and Vehicle registries, and workshop catalogs.
+  version: 1.0.0
+servers:
+  - url: /
+    description: Current Server
+tags:
+  - name: WorkOrder
+    description: Work Order management operations
+  - name: Customer
+    description: Customer registration and retrieval operations
+  - name: Vehicle
+    description: Vehicle registration and retrieval operations
+  - name: ServiceCatalog
+    description: Workshop service catalog and labor pricing operations
+  - name: Material
+    description: Spare parts and materials catalog and inventory operations
+
+paths:
+  # =========================================================================
+  # Work Order Endpoints
+  # =========================================================================
+  /api/v1/work-orders:
+    post:
+      tags:
+        - WorkOrder
+      summary: Create a new Work Order
+      operationId: createWorkOrder
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateWorkOrderRequest'
+      responses:
+        '201':
+          description: Work Order successfully created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkOrderResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+
+    get:
+      tags:
+        - WorkOrder
+      summary: List Work Orders with filters
+      operationId: listWorkOrders
+      parameters:
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: customerDocument
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: licensePlate
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        '200':
+          description: List of Work Orders
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/WorkOrderResponse'
+
+  /api/v1/work-orders/{id}:
+    get:
+      tags:
+        - WorkOrder
+      summary: Get Work Order by identifier
+      operationId: getWorkOrderById
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Work Order details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkOrderResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/v1/work-orders/{id}/status:
+    patch:
+      tags:
+        - WorkOrder
+      summary: Update Work Order status (Approve, Cancel, etc.)
+      operationId: updateWorkOrderStatus
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateStatusRequest'
+      responses:
+        '200':
+          description: Work Order status updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkOrderResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+
+  # =========================================================================
+  # Customer Endpoints
+  # =========================================================================
+  /api/v1/customers:
+    post:
+      tags:
+        - Customer
+      summary: Register a new Customer
+      operationId: createCustomer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateCustomerRequest'
+      responses:
+        '201':
+          description: Customer registered successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CustomerResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+
+  /api/v1/customers/{document}:
+    get:
+      tags:
+        - Customer
+      summary: Get Customer by Document (CPF or CNPJ)
+      operationId: getCustomerByDocument
+      parameters:
+        - name: document
+          in: path
+          required: true
+          schema:
+            type: string
+          example: '52998224725'
+      responses:
+        '200':
+          description: Customer details found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CustomerResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # =========================================================================
+  # Vehicle Endpoints
+  # =========================================================================
+  /api/v1/vehicles:
+    post:
+      tags:
+        - Vehicle
+      summary: Register a new Vehicle linked to a Customer
+      operationId: createVehicle
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateVehicleRequest'
+      responses:
+        '201':
+          description: Vehicle registered successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VehicleResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+
+  /api/v1/vehicles/{licensePlate}:
+    get:
+      tags:
+        - Vehicle
+      summary: Get Vehicle by License Plate
+      operationId: getVehicleByLicensePlate
+      parameters:
+        - name: licensePlate
+          in: path
+          required: true
+          schema:
+            type: string
+          example: 'BRA2E19'
+      responses:
+        '200':
+          description: Vehicle details found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VehicleResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # =========================================================================
+  # Service Catalog Endpoints
+  # =========================================================================
+  /api/v1/services:
+    post:
+      tags:
+        - ServiceCatalog
+      summary: Register a new garage service in the catalog
+      operationId: createService
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateServiceCatalogRequest'
+      responses:
+        '201':
+          description: Service catalog item created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ServiceCatalogResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+
+    get:
+      tags:
+        - ServiceCatalog
+      summary: List all service catalog items
+      operationId: listServices
+      parameters:
+        - name: search
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        '200':
+          description: List of service catalog items
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ServiceCatalogResponse'
+
+  /api/v1/services/{id}:
+    get:
+      tags:
+        - ServiceCatalog
+      summary: Get service catalog item by ID
+      operationId: getServiceById
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Service catalog details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ServiceCatalogResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    delete:
+      tags:
+        - ServiceCatalog
+      summary: Delete service catalog item
+      operationId: deleteService
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Service deleted successfully
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/v1/services/{id}/price:
+    patch:
+      tags:
+        - ServiceCatalog
+      summary: Update labor price of a service
+      operationId: updateServicePrice
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateServiceCatalogPriceRequest'
+      responses:
+        '200':
+          description: Service price updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ServiceCatalogResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # =========================================================================
+  # Material Catalog Endpoints
+  # =========================================================================
+  /api/v1/materials:
+    post:
+      tags:
+        - Material
+      summary: Register a new spare part or material in the catalog
+      operationId: createMaterial
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateMaterialRequest'
+      responses:
+        '201':
+          description: Material created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MaterialResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+
+    get:
+      tags:
+        - Material
+      summary: List all materials with optional search
+      operationId: listMaterials
+      parameters:
+        - name: search
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        '200':
+          description: List of materials
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/MaterialResponse'
+
+  /api/v1/materials/{id}:
+    get:
+      tags:
+        - Material
+      summary: Get material details by ID
+      operationId: getMaterialById
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Material details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MaterialResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    delete:
+      tags:
+        - Material
+      summary: Delete material
+      operationId: deleteMaterial
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Material deleted successfully
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/v1/materials/{id}/price:
+    patch:
+      tags:
+        - Material
+      summary: Update material unit price and cost
+      operationId: updateMaterialPrice
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateMaterialPriceRequest'
+      responses:
+        '200':
+          description: Material price updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MaterialResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+components:
+  schemas:
+    # -----------------------------------------------------------------------
+    # Work Order Schemas
+    # -----------------------------------------------------------------------
+    CreateWorkOrderRequest:
+      type: object
+      required:
+        - customerDocument
+        - licensePlate
+        - description
+      properties:
+        customerDocument:
+          type: string
+          example: '52998224725'
+        licensePlate:
+          type: string
+          example: 'BRA2E19'
+        description:
+          type: string
+          example: 'Regular maintenance and brake inspection'
+
+    UpdateStatusRequest:
+      type: object
+      required:
+        - status
+      properties:
+        status:
+          type: string
+          enum: [RECEIVED, DIAGNOSING, WAITING_APPROVAL, APPROVED, EXECUTING, COMPLETED, CANCELED]
+          example: 'APPROVED'
+        reason:
+          type: string
+          example: 'Customer approved the budget'
+
+    WorkOrderResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        customerDocument:
+          type: string
+        licensePlate:
+          type: string
+        status:
+          type: string
+        description:
+          type: string
+        totalAmount:
+          type: number
+          format: double
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    # -----------------------------------------------------------------------
+    # Customer Schemas
+    # -----------------------------------------------------------------------
+    CreateCustomerRequest:
+      type: object
+      required:
+        - document
+        - name
+        - email
+      properties:
+        document:
+          type: string
+          example: '52998224725'
+        name:
+          type: string
+          example: 'Carlos Silva'
+        email:
+          type: string
+          format: email
+          example: 'carlos.silva@example.com'
+
+    CustomerResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        email:
+          type: string
+        document:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+
+    # -----------------------------------------------------------------------
+    # Vehicle Schemas
+    # -----------------------------------------------------------------------
+    CreateVehicleRequest:
+      type: object
+      required:
+        - licensePlate
+        - customerDocument
+        - model
+      properties:
+        licensePlate:
+          type: string
+          example: 'BRA2E19'
+        customerDocument:
+          type: string
+          example: '52998224725'
+        make:
+          type: string
+          example: 'Toyota'
+        brand:
+          type: string
+          example: 'Toyota'
+        model:
+          type: string
+          example: 'Corolla'
+        manufactureYear:
+          type: integer
+          example: 2023
+        year:
+          type: integer
+          example: 2023
+
+    VehicleResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        customerDocument:
+          type: string
+        licensePlate:
+          type: string
+        make:
+          type: string
+        model:
+          type: string
+        manufactureYear:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+
+    # -----------------------------------------------------------------------
+    # Service Catalog Schemas
+    # -----------------------------------------------------------------------
+    CreateServiceCatalogRequest:
+      type: object
+      required:
+        - code
+        - name
+        - price
+      properties:
+        code:
+          type: string
+          example: 'SRV-OIL-01'
+        name:
+          type: string
+          example: 'Troca de Óleo e Filtro'
+        description:
+          type: string
+          example: 'Substituição completa do óleo e filtro do motor'
+        price:
+          type: number
+          format: double
+          example: 150.00
+        estimatedMinutes:
+          type: integer
+          format: int64
+          example: 60
+
+    UpdateServiceCatalogPriceRequest:
+      type: object
+      required:
+        - price
+      properties:
+        price:
+          type: number
+          format: double
+          example: 180.00
+
+    ServiceCatalogResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        code:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        price:
+          type: number
+          format: double
+        estimatedMinutes:
+          type: integer
+          format: int64
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    # -----------------------------------------------------------------------
+    # Material Schemas
+    # -----------------------------------------------------------------------
+    CreateMaterialRequest:
+      type: object
+      required:
+        - sku
+        - name
+        - unitPrice
+      properties:
+        sku:
+          type: string
+          example: 'PART-BRK-01'
+        name:
+          type: string
+          example: 'Pastilha de Freio Dianteira'
+        description:
+          type: string
+          example: 'Pastilhas cerâmicas para eixo dianteiro'
+        unitCost:
+          type: number
+          format: double
+          example: 80.00
+        unitPrice:
+          type: number
+          format: double
+          example: 140.00
+        initialStock:
+          type: integer
+          example: 20
+        minStock:
+          type: integer
+          example: 5
+
+    UpdateMaterialPriceRequest:
+      type: object
+      required:
+        - unitPrice
+      properties:
+        unitPrice:
+          type: number
+          format: double
+          example: 155.00
+        unitCost:
+          type: number
+          format: double
+          example: 85.00
+
+    MaterialResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        sku:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        unitCost:
+          type: number
+          format: double
+        unitPrice:
+          type: number
+          format: double
+        stockQuantity:
+          type: integer
+        minStock:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    # -----------------------------------------------------------------------
+    # ProblemDetail (RFC 7807/9457)
+    # -----------------------------------------------------------------------
+    ProblemDetail:
+      type: object
+      properties:
+        type:
+          type: string
+          format: uri
+        title:
+          type: string
+        status:
+          type: integer
+        detail:
+          type: string
+        instance:
+          type: string
+          format: uri
+        errorCode:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+        traceId:
+          type: string
+
+  responses:
+    BadRequest:
+      description: Bad Request
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetail'
+    NotFound:
+      description: Resource Not Found
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetail'
+    UnprocessableEntity:
+      description: Validation or Domain Exception
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetail'

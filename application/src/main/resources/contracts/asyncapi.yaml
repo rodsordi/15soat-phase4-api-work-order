@@ -1,0 +1,128 @@
+asyncapi: 3.0.0
+info:
+  title: Work Order Events Stream
+  version: 1.0.0
+  description: Kafka event streams published and consumed by the Work Order Microservice.
+
+channels:
+  workOrderApprovedChannel:
+    address: work-order-events
+    messages:
+      workOrderApprovedMessage:
+        $ref: '#/components/messages/WorkOrderApprovedEvent'
+
+  paymentEventsChannel:
+    address: payment-events
+    messages:
+      paymentFailedMessage:
+        $ref: '#/components/messages/PaymentFailedEvent'
+
+  executionEventsChannel:
+    address: execution-events
+    messages:
+      executionCompletedMessage:
+        $ref: '#/components/messages/ExecutionCompletedEvent'
+      executionFailedMessage:
+        $ref: '#/components/messages/ExecutionFailedEvent'
+
+operations:
+  publishWorkOrderApproved:
+    action: send
+    channel:
+      $ref: '#/channels/workOrderApprovedChannel'
+    messages:
+      - $ref: '#/channels/workOrderApprovedChannel/messages/workOrderApprovedMessage'
+
+  consumePaymentFailed:
+    action: receive
+    channel:
+      $ref: '#/channels/paymentEventsChannel'
+    messages:
+      - $ref: '#/channels/paymentEventsChannel/messages/paymentFailedMessage'
+
+  consumeExecutionCompleted:
+    action: receive
+    channel:
+      $ref: '#/channels/executionEventsChannel'
+    messages:
+      - $ref: '#/channels/executionEventsChannel/messages/executionCompletedMessage'
+
+components:
+  messages:
+    WorkOrderApprovedEvent:
+      name: WorkOrderApprovedEvent
+      title: Work Order Approved Event (Saga Trigger)
+      contentType: application/json
+      payload:
+        $ref: '#/components/schemas/WorkOrderApprovedPayload'
+
+    PaymentFailedEvent:
+      name: PaymentFailedEvent
+      title: Payment Failed Event (Compensating Rollback)
+      contentType: application/json
+      payload:
+        $ref: '#/components/schemas/PaymentFailedPayload'
+
+    ExecutionCompletedEvent:
+      name: ExecutionCompletedEvent
+      title: Execution Completed Event
+      contentType: application/json
+      payload:
+        $ref: '#/components/schemas/ExecutionCompletedPayload'
+
+    ExecutionFailedEvent:
+      name: ExecutionFailedEvent
+      title: Execution Failed Event (Compensating Rollback)
+      contentType: application/json
+      payload:
+        $ref: '#/components/schemas/ExecutionFailedPayload'
+
+  schemas:
+    WorkOrderApprovedPayload:
+      type: object
+      required:
+        - workOrderId
+        - customerDocument
+        - totalAmount
+      properties:
+        workOrderId:
+          type: string
+          format: uuid
+        customerDocument:
+          type: string
+        totalAmount:
+          type: number
+          format: double
+
+    PaymentFailedPayload:
+      type: object
+      required:
+        - workOrderId
+        - reason
+      properties:
+        workOrderId:
+          type: string
+          format: uuid
+        reason:
+          type: string
+
+    ExecutionCompletedPayload:
+      type: object
+      required:
+        - workOrderId
+      properties:
+        workOrderId:
+          type: string
+          format: uuid
+
+    ExecutionFailedPayload:
+      type: object
+      required:
+        - workOrderId
+        - reason
+      properties:
+        workOrderId:
+          type: string
+          format: uuid
+        reason:
+          type: string

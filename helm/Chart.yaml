@@ -1,0 +1,6 @@
+apiVersion: v2
+name: work-order-service
+description: Helm chart for Work Order Microservice on AWS EKS with Kong Ingress
+type: application
+version: 1.0.0
+appVersion: "1.0.0"
