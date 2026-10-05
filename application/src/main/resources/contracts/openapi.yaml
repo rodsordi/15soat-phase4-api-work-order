@@ -496,7 +496,7 @@ components:
       properties:
         status:
           type: string
-          enum: [RECEIVED, DIAGNOSING, WAITING_APPROVAL, APPROVED, EXECUTING, COMPLETED, CANCELED]
+          enum: [RECEIVED, DIAGNOSING, WAITING_APPROVAL, WAITING_FOR_APPROVAL, APPROVED, EXECUTING, COMPLETED, DELIVERED, CANCELED]
           example: 'APPROVED'
         reason:
           type: string

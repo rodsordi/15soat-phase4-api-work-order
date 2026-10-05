@@ -54,7 +54,7 @@ public class WorkOrderController implements WorkOrderApi {
         WorkOrderStatus orderStatus = null;
         if (status != null && !status.isBlank()) {
             try {
-                orderStatus = WorkOrderStatus.valueOf(status.toUpperCase());
+                orderStatus = WorkOrderStatus.fromString(status);
             } catch (IllegalArgumentException ignored) {
             }
         }
@@ -65,7 +65,7 @@ public class WorkOrderController implements WorkOrderApi {
     @Override
     public ResponseEntity<WorkOrderResponse> updateWorkOrderStatus(UUID id, UpdateStatusRequest request) {
         log.info("Received request to update status for work order: {}", id);
-        WorkOrderStatus status = WorkOrderStatus.valueOf(request.getStatus().name());
+        WorkOrderStatus status = WorkOrderStatus.fromString(request.getStatus().name());
         String traceId = MDC.get("traceId");
         WorkOrder updated = updateWorkOrderStatusUseCase.updateStatus(id, status, request.getReason(), traceId);
         return ResponseEntity.ok(toResponse(updated));

@@ -41,13 +41,16 @@ class WorkOrderDomainTest {
     @Mock
     private VehicleRepositoryPort vehicleRepository;
 
+    @Mock
+    private br.com.fiap.phase4.workorder.domain.port.out.MaterialRepositoryPort materialRepository;
+
     private CreateWorkOrderUseCaseImpl createUseCase;
     private UpdateWorkOrderStatusUseCaseImpl updateUseCase;
 
     @BeforeEach
     void setUp() {
         createUseCase = new CreateWorkOrderUseCaseImpl(repository, customerRepository, vehicleRepository);
-        updateUseCase = new UpdateWorkOrderStatusUseCaseImpl(repository, eventPublisher);
+        updateUseCase = new UpdateWorkOrderStatusUseCaseImpl(repository, eventPublisher, materialRepository);
     }
 
     @Nested
@@ -96,6 +99,56 @@ class WorkOrderDomainTest {
             assertThat(updated.getStatus()).isEqualTo(WorkOrderStatus.APPROVED);
             verify(repository).save(workOrder);
             verify(eventPublisher).publishWorkOrderApproved(workOrder, "trace-123");
+        }
+
+        @Test
+        @DisplayName("Should deliver completed Work Order successfully")
+        void shouldDeliverCompletedWorkOrder() {
+            UUID id = UUID.randomUUID();
+            WorkOrder workOrder = WorkOrder.create(
+                    new br.com.fiap.phase4.commons.domain.vo.CpfOrCnpj("52998224725"),
+                    new br.com.fiap.phase4.commons.domain.vo.LicensePlate("BRA2E19"),
+                    "Maintenance"
+            );
+            workOrder.complete();
+            when(repository.findById(id)).thenReturn(Optional.of(workOrder));
+
+            WorkOrder updated = updateUseCase.updateStatus(id, WorkOrderStatus.DELIVERED, "Vehicle delivered", "trace-123");
+
+            assertThat(updated.getStatus()).isEqualTo(WorkOrderStatus.DELIVERED);
+            assertThat(updated.getStatusHistory()).isNotEmpty();
+            verify(repository).save(workOrder);
+        }
+
+        @Test
+        @DisplayName("Should reserve material on approval and release on cancellation")
+        void shouldReserveOnApproveAndReleaseOnCancel() {
+            UUID id = UUID.randomUUID();
+            UUID materialId = UUID.randomUUID();
+            WorkOrder workOrder = WorkOrder.create(
+                    new br.com.fiap.phase4.commons.domain.vo.CpfOrCnpj("52998224725"),
+                    new br.com.fiap.phase4.commons.domain.vo.LicensePlate("BRA2E19"),
+                    "Maintenance"
+            );
+            workOrder.addMaterial(materialId, "Brake Pad", "PART-01", br.com.fiap.phase4.commons.domain.vo.Money.of(new java.math.BigDecimal("50.00")), 2);
+
+            br.com.fiap.phase4.workorder.domain.model.Material material = br.com.fiap.phase4.workorder.domain.model.Material.create(
+                    "PART-01", "Brake Pad", "Desc",
+                    br.com.fiap.phase4.commons.domain.vo.Money.of(new java.math.BigDecimal("20.00")),
+                    br.com.fiap.phase4.commons.domain.vo.Money.of(new java.math.BigDecimal("50.00")),
+                    10, 2
+            );
+
+            when(repository.findById(id)).thenReturn(Optional.of(workOrder));
+            when(materialRepository.findById(materialId)).thenReturn(Optional.of(material));
+
+            // Approve: should reserve 2 units
+            updateUseCase.updateStatus(id, WorkOrderStatus.APPROVED, "Approved", "trace-1");
+            assertThat(material.getReservedQuantity()).isEqualTo(2);
+
+            // Cancel: should release 2 units
+            updateUseCase.updateStatus(id, WorkOrderStatus.CANCELED, "Client canceled", "trace-2");
+            assertThat(material.getReservedQuantity()).isEqualTo(0);
         }
     }
 }

@@ -36,6 +36,12 @@ public class WorkOrderServiceItem {
     @Column(name = "service_id", nullable = false)
     private UUID serviceId;
 
+    @Column(name = "item_name", length = 200)
+    private String itemName;
+
+    @Column(name = "item_code", length = 50)
+    private String itemCode;
+
     @Getter(AccessLevel.NONE)
     @Column(name = "unit_price", nullable = false, precision = 12, scale = 2)
     private BigDecimal unitPrice;
@@ -46,10 +52,13 @@ public class WorkOrderServiceItem {
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
-    public WorkOrderServiceItem(UUID id, WorkOrder workOrder, UUID serviceId, BigDecimal unitPrice, Integer quantity, Instant createdAt) {
+    public WorkOrderServiceItem(UUID id, WorkOrder workOrder, UUID serviceId, String itemName, String itemCode,
+                                BigDecimal unitPrice, Integer quantity, Instant createdAt) {
         this.id = id != null ? id : UUID.randomUUID();
         this.workOrder = workOrder;
         this.serviceId = Objects.requireNonNull(serviceId, "Service ID is required");
+        this.itemName = itemName;
+        this.itemCode = itemCode;
         this.unitPrice = Objects.requireNonNull(unitPrice, "Unit price is required");
         if (quantity == null || quantity <= 0) {
             throw new IllegalArgumentException("Quantity must be greater than zero");
@@ -58,8 +67,14 @@ public class WorkOrderServiceItem {
         this.createdAt = createdAt != null ? createdAt : Instant.now();
     }
 
+    public static WorkOrderServiceItem of(WorkOrder workOrder, UUID serviceId, String itemName, String itemCode,
+                                          Money unitPrice, int quantity) {
+        return new WorkOrderServiceItem(UUID.randomUUID(), workOrder, serviceId, itemName, itemCode,
+                unitPrice.amount(), quantity, Instant.now());
+    }
+
     public static WorkOrderServiceItem of(WorkOrder workOrder, UUID serviceId, Money unitPrice, int quantity) {
-        return new WorkOrderServiceItem(UUID.randomUUID(), workOrder, serviceId, unitPrice.amount(), quantity, Instant.now());
+        return of(workOrder, serviceId, null, null, unitPrice, quantity);
     }
 
     public Money getUnitPrice() {

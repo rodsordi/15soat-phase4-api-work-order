@@ -75,6 +75,10 @@ public class WorkOrder {
     @OneToMany(mappedBy = "workOrder", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
     private List<WorkOrderMaterialItem> materials = new ArrayList<>();
 
+    @Getter(AccessLevel.NONE)
+    @OneToMany(mappedBy = "workOrder", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
+    private List<WorkOrderStatusHistory> statusHistory = new ArrayList<>();
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
@@ -119,45 +123,71 @@ public class WorkOrder {
     }
 
     public void approve() {
-        if (this.status == WorkOrderStatus.CANCELED || this.status == WorkOrderStatus.COMPLETED) {
+        if (this.status == WorkOrderStatus.CANCELED || this.status == WorkOrderStatus.COMPLETED || this.status == WorkOrderStatus.DELIVERED) {
             throw new DomainException("INVALID_STATUS_TRANSITION",
                     "Cannot approve a work order in status: " + this.status);
         }
-        this.status = WorkOrderStatus.APPROVED;
-        this.updatedAt = Instant.now();
+        transitionTo(WorkOrderStatus.APPROVED, "Budget approved by customer", null);
     }
 
     public void cancel(String reason) {
-        if (this.status == WorkOrderStatus.COMPLETED) {
+        if (this.status == WorkOrderStatus.COMPLETED || this.status == WorkOrderStatus.DELIVERED) {
             throw new DomainException("INVALID_STATUS_TRANSITION",
-                    "Cannot cancel an already completed work order");
+                    "Cannot cancel an already finalized work order");
         }
-        this.status = WorkOrderStatus.CANCELED;
-        this.updatedAt = Instant.now();
+        transitionTo(WorkOrderStatus.CANCELED, reason, null);
     }
 
     public void rejectPayment(String reason) {
-        this.status = WorkOrderStatus.PAYMENT_REJECTED;
-        this.updatedAt = Instant.now();
+        transitionTo(WorkOrderStatus.PAYMENT_REJECTED, reason, null);
     }
 
     public void complete() {
-        this.status = WorkOrderStatus.COMPLETED;
-        this.updatedAt = Instant.now();
+        transitionTo(WorkOrderStatus.COMPLETED, "Repairs completed", null);
     }
 
-    public void addService(UUID serviceId, Money unitPrice, int quantity) {
-        WorkOrderServiceItem item = WorkOrderServiceItem.of(this, serviceId, unitPrice, quantity);
+    public void deliver() {
+        if (this.status != WorkOrderStatus.COMPLETED) {
+            throw new DomainException("INVALID_STATUS_TRANSITION",
+                    "Cannot deliver a work order that is not COMPLETED. Current: " + this.status);
+        }
+        transitionTo(WorkOrderStatus.DELIVERED, "Vehicle released to customer", null);
+    }
+
+    public void transitionTo(WorkOrderStatus newStatus, String reason, String changedBy) {
+        if (this.status == newStatus) {
+            return;
+        }
+        WorkOrderStatus from = this.status;
+        this.status = newStatus;
+        this.updatedAt = Instant.now();
+        this.statusHistory.add(WorkOrderStatusHistory.record(this, from, newStatus, reason, changedBy));
+    }
+
+    public List<WorkOrderStatusHistory> getStatusHistory() {
+        return Collections.unmodifiableList(statusHistory);
+    }
+
+    public void addService(UUID serviceId, String itemName, String itemCode, Money unitPrice, int quantity) {
+        WorkOrderServiceItem item = WorkOrderServiceItem.of(this, serviceId, itemName, itemCode, unitPrice, quantity);
         this.services.add(item);
         this.totalAmount = calculateTotalAmount().amount();
         this.updatedAt = Instant.now();
     }
 
-    public void addMaterial(UUID materialId, Money unitPrice, int quantity) {
-        WorkOrderMaterialItem item = WorkOrderMaterialItem.of(this, materialId, unitPrice, quantity);
+    public void addService(UUID serviceId, Money unitPrice, int quantity) {
+        addService(serviceId, null, null, unitPrice, quantity);
+    }
+
+    public void addMaterial(UUID materialId, String itemName, String itemSku, Money unitPrice, int quantity) {
+        WorkOrderMaterialItem item = WorkOrderMaterialItem.of(this, materialId, itemName, itemSku, unitPrice, quantity);
         this.materials.add(item);
         this.totalAmount = calculateTotalAmount().amount();
         this.updatedAt = Instant.now();
+    }
+
+    public void addMaterial(UUID materialId, Money unitPrice, int quantity) {
+        addMaterial(materialId, null, null, unitPrice, quantity);
     }
 
     public Money calculateTotalAmount() {

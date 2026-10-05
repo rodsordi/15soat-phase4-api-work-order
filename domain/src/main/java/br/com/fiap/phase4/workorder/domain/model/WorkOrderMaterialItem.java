@@ -36,6 +36,12 @@ public class WorkOrderMaterialItem {
     @Column(name = "material_id", nullable = false)
     private UUID materialId;
 
+    @Column(name = "item_name", length = 200)
+    private String itemName;
+
+    @Column(name = "item_sku", length = 50)
+    private String itemSku;
+
     @Getter(AccessLevel.NONE)
     @Column(name = "unit_price", nullable = false, precision = 12, scale = 2)
     private BigDecimal unitPrice;
@@ -46,10 +52,13 @@ public class WorkOrderMaterialItem {
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
-    public WorkOrderMaterialItem(UUID id, WorkOrder workOrder, UUID materialId, BigDecimal unitPrice, Integer quantity, Instant createdAt) {
+    public WorkOrderMaterialItem(UUID id, WorkOrder workOrder, UUID materialId, String itemName, String itemSku,
+                                 BigDecimal unitPrice, Integer quantity, Instant createdAt) {
         this.id = id != null ? id : UUID.randomUUID();
         this.workOrder = workOrder;
         this.materialId = Objects.requireNonNull(materialId, "Material ID is required");
+        this.itemName = itemName;
+        this.itemSku = itemSku;
         this.unitPrice = Objects.requireNonNull(unitPrice, "Unit price is required");
         if (quantity == null || quantity <= 0) {
             throw new IllegalArgumentException("Quantity must be greater than zero");
@@ -58,8 +67,14 @@ public class WorkOrderMaterialItem {
         this.createdAt = createdAt != null ? createdAt : Instant.now();
     }
 
+    public static WorkOrderMaterialItem of(WorkOrder workOrder, UUID materialId, String itemName, String itemSku,
+                                           Money unitPrice, int quantity) {
+        return new WorkOrderMaterialItem(UUID.randomUUID(), workOrder, materialId, itemName, itemSku,
+                unitPrice.amount(), quantity, Instant.now());
+    }
+
     public static WorkOrderMaterialItem of(WorkOrder workOrder, UUID materialId, Money unitPrice, int quantity) {
-        return new WorkOrderMaterialItem(UUID.randomUUID(), workOrder, materialId, unitPrice.amount(), quantity, Instant.now());
+        return of(workOrder, materialId, null, null, unitPrice, quantity);
     }
 
     public Money getUnitPrice() {
