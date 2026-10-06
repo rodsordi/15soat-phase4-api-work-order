@@ -95,6 +95,8 @@ public class MaterialController implements MaterialApi {
             response.setUnitPrice(domain.getUnitPrice().amount().doubleValue());
         }
         response.setStockQuantity(domain.getStockQuantity());
+        response.setReservedQuantity(domain.getReservedQuantity());
+        response.setAvailableQuantity(domain.getAvailableQuantity());
         response.setMinStock(domain.getMinStock());
         if (domain.getCreatedAt() != null) {
             response.setCreatedAt(OffsetDateTime.ofInstant(domain.getCreatedAt(), ZoneOffset.UTC));

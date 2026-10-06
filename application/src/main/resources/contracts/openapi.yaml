@@ -502,6 +502,74 @@ components:
           type: string
           example: 'Customer approved the budget'
 
+    WorkOrderServiceItemResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        serviceId:
+          type: string
+          format: uuid
+        itemName:
+          type: string
+        itemCode:
+          type: string
+        unitPrice:
+          type: number
+          format: double
+        quantity:
+          type: integer
+        subtotal:
+          type: number
+          format: double
+        createdAt:
+          type: string
+          format: date-time
+
+    WorkOrderMaterialItemResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        materialId:
+          type: string
+          format: uuid
+        itemName:
+          type: string
+        itemSku:
+          type: string
+        unitPrice:
+          type: number
+          format: double
+        quantity:
+          type: integer
+        subtotal:
+          type: number
+          format: double
+        createdAt:
+          type: string
+          format: date-time
+
+    WorkOrderStatusHistoryResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        fromStatus:
+          type: string
+        toStatus:
+          type: string
+        reason:
+          type: string
+        changedAt:
+          type: string
+          format: date-time
+        changedBy:
+          type: string
+
     WorkOrderResponse:
       type: object
       properties:
@@ -519,6 +587,18 @@ components:
         totalAmount:
           type: number
           format: double
+        services:
+          type: array
+          items:
+            $ref: '#/components/schemas/WorkOrderServiceItemResponse'
+        materials:
+          type: array
+          items:
+            $ref: '#/components/schemas/WorkOrderMaterialItemResponse'
+        statusHistory:
+          type: array
+          items:
+            $ref: '#/components/schemas/WorkOrderStatusHistoryResponse'
         createdAt:
           type: string
           format: date-time
@@ -560,6 +640,9 @@ components:
         document:
           type: string
         createdAt:
+          type: string
+          format: date-time
+        updatedAt:
           type: string
           format: date-time
 
@@ -745,6 +828,10 @@ components:
           type: number
           format: double
         stockQuantity:
+          type: integer
+        reservedQuantity:
+          type: integer
+        availableQuantity:
           type: integer
         minStock:
           type: integer

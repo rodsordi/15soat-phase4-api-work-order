@@ -183,4 +183,8 @@ public class Material {
     public Money getUnitPrice() {
         return unitPrice != null ? Money.of(unitPrice) : Money.ZERO;
     }
+
+    public int getAvailableQuantity() {
+        return Math.max(0, this.stockQuantity - this.reservedQuantity);
+    }
 }

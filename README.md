@@ -21,9 +21,9 @@ Microsserviço responsável pela gestão completa do ciclo de vida das Ordens de
 
 O modelo de dados relacional é persistido no banco PostgreSQL (`work_order_db`) gerenciado via migrations Flyway.
 
-Para a documentação completa dos esquemas relacionais, dicionário de dados detalhado e diagrama Mermaid atualizado com trilha de auditoria e reservas de estoque, consulte a especificação centralizada no projeto E2E:
+Para a documentação completa dos esquemas relacionais, dicionário de dados detalhado e diagrama Mermaid atualizado com trilha de auditoria e reservas de estoque, consulte a especificação dedicada:
 
-👉 **[model.md (E2E) - Diagrama do Modelo de Dados & MER](../15soat-phase4-e2e/src/test/resources/features/work-order/model.md)**
+👉 **[MODEL.md - Diagrama do Modelo de Dados & MER](MODEL.md)**
 
 ## Execução Local
 

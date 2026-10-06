@@ -79,6 +79,54 @@ public class WorkOrderController implements WorkOrderApi {
         response.setStatus(domain.getStatus().name());
         response.setDescription(domain.getDescription());
         response.setTotalAmount(domain.getTotalAmount().amount().doubleValue());
+        if (domain.getServices() != null) {
+            response.setServices(domain.getServices().stream().map(s -> {
+                var dto = new br.com.fiap.phase4.workorder.adapter.in.web.dto.WorkOrderServiceItemResponse();
+                dto.setId(s.getId());
+                dto.setServiceId(s.getServiceId());
+                dto.setItemName(s.getItemName());
+                dto.setItemCode(s.getItemCode());
+                dto.setUnitPrice(s.getUnitPrice().amount().doubleValue());
+                dto.setQuantity(s.getQuantity());
+                dto.setSubtotal(s.getSubtotal().amount().doubleValue());
+                if (s.getCreatedAt() != null) {
+                    dto.setCreatedAt(OffsetDateTime.ofInstant(s.getCreatedAt(), ZoneOffset.UTC));
+                }
+                return dto;
+            }).toList());
+        }
+        if (domain.getMaterials() != null) {
+            response.setMaterials(domain.getMaterials().stream().map(m -> {
+                var dto = new br.com.fiap.phase4.workorder.adapter.in.web.dto.WorkOrderMaterialItemResponse();
+                dto.setId(m.getId());
+                dto.setMaterialId(m.getMaterialId());
+                dto.setItemName(m.getItemName());
+                dto.setItemSku(m.getItemSku());
+                dto.setUnitPrice(m.getUnitPrice().amount().doubleValue());
+                dto.setQuantity(m.getQuantity());
+                dto.setSubtotal(m.getSubtotal().amount().doubleValue());
+                if (m.getCreatedAt() != null) {
+                    dto.setCreatedAt(OffsetDateTime.ofInstant(m.getCreatedAt(), ZoneOffset.UTC));
+                }
+                return dto;
+            }).toList());
+        }
+        if (domain.getStatusHistory() != null) {
+            response.setStatusHistory(domain.getStatusHistory().stream().map(h -> {
+                var dto = new br.com.fiap.phase4.workorder.adapter.in.web.dto.WorkOrderStatusHistoryResponse();
+                dto.setId(h.getId());
+                if (h.getFromStatus() != null) {
+                    dto.setFromStatus(h.getFromStatus().name());
+                }
+                dto.setToStatus(h.getToStatus().name());
+                dto.setReason(h.getReason());
+                dto.setChangedBy(h.getChangedBy());
+                if (h.getChangedAt() != null) {
+                    dto.setChangedAt(OffsetDateTime.ofInstant(h.getChangedAt(), ZoneOffset.UTC));
+                }
+                return dto;
+            }).toList());
+        }
         response.setCreatedAt(OffsetDateTime.ofInstant(domain.getCreatedAt(), ZoneOffset.UTC));
         response.setUpdatedAt(OffsetDateTime.ofInstant(domain.getUpdatedAt(), ZoneOffset.UTC));
         return response;

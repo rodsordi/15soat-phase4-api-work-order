@@ -46,6 +46,9 @@ public class CustomerController implements CustomerApi {
         if (customer.getCreatedAt() != null) {
             response.setCreatedAt(OffsetDateTime.ofInstant(customer.getCreatedAt(), ZoneOffset.UTC));
         }
+        if (customer.getUpdatedAt() != null) {
+            response.setUpdatedAt(OffsetDateTime.ofInstant(customer.getUpdatedAt(), ZoneOffset.UTC));
+        }
         return response;
     }
 }
