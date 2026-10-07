@@ -6,6 +6,7 @@ import br.com.fiap.phase4.workorder.domain.model.Material;
 import java.util.UUID;
 
 public interface UpdateMaterialUseCase {
+    Material updateMaterial(UUID id, String name, String description, Money unitCost, Money unitPrice, Integer minStock);
     Material updatePrice(UUID id, Money newPrice, Money newCost);
     Material updateStock(UUID id, int stockDelta);
     Material updateDetails(UUID id, String name, String description, Integer minStock);

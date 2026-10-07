@@ -14,4 +14,10 @@ public interface WorkOrderRepositoryPort {
     Optional<WorkOrder> findById(UUID id);
 
     List<WorkOrder> findByFilters(WorkOrderStatus status, String customerDocument, String licensePlate);
+
+    List<WorkOrder> findAll();
+
+    boolean hasActiveWorkOrdersByCustomerId(UUID customerId);
+
+    boolean hasActiveWorkOrdersByVehicleId(UUID vehicleId);
 }

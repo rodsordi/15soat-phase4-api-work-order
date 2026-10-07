@@ -77,6 +77,11 @@ public class ServiceCatalog {
         this.updatedAt = updatedAt != null ? updatedAt : Instant.now();
     }
 
+    public static ServiceCatalog create(String code, String name, String description, Money price) {
+        return new ServiceCatalog(UUID.randomUUID(), code, name, description, price, 0L,
+                Instant.now(), Instant.now());
+    }
+
     public static ServiceCatalog create(String code, String name, String description,
                                         Money price, Long estimatedMinutes) {
         return new ServiceCatalog(UUID.randomUUID(), code, name, description, price, estimatedMinutes,
@@ -89,6 +94,23 @@ public class ServiceCatalog {
             throw new DomainException("INVALID_PRICE", "Service price cannot be negative");
         }
         this.price = newPrice.amount();
+        this.updatedAt = Instant.now();
+    }
+
+    public void updateEstimatedMinutes(Long averageMinutes) {
+        if (averageMinutes != null && averageMinutes >= 0) {
+            this.estimatedMinutes = averageMinutes;
+            this.updatedAt = Instant.now();
+        }
+    }
+
+    public void updateDetails(String name, String description) {
+        if (name != null && !name.isBlank()) {
+            this.name = name.trim();
+        }
+        if (description != null) {
+            this.description = description.trim();
+        }
         this.updatedAt = Instant.now();
     }
 

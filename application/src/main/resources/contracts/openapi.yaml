@@ -1,22 +1,22 @@
 openapi: 3.0.3
 info:
-  title: Work Order API
-  description: Microservice responsible for opening, managing, estimating and tracking Work Orders, Customer and Vehicle registries, and workshop catalogs.
+  title: API de Ordens de Serviço
+  description: Microsserviço responsável pela abertura, gerenciamento, orçamentação e rastreamento de Ordens de Serviço, cadastros de Clientes e Veículos, e catálogos de serviços e materiais da oficina.
   version: 1.0.0
 servers:
   - url: /
-    description: Current Server
+    description: Servidor Atual
 tags:
   - name: WorkOrder
-    description: Work Order management operations
+    description: Operações de gestão do ciclo de vida das Ordens de Serviço
   - name: Customer
-    description: Customer registration and retrieval operations
+    description: Operações de cadastro e consulta de Clientes
   - name: Vehicle
-    description: Vehicle registration and retrieval operations
+    description: Operações de cadastro e consulta de Veículos
   - name: ServiceCatalog
-    description: Workshop service catalog and labor pricing operations
+    description: Operações do catálogo de serviços padronizados e precificação de mão de obra
   - name: Material
-    description: Spare parts and materials catalog and inventory operations
+    description: Operações do catálogo de peças de reposição, estoque e materiais
 
 paths:
   # =========================================================================
@@ -26,7 +26,7 @@ paths:
     post:
       tags:
         - WorkOrder
-      summary: Create a new Work Order
+      summary: Criar uma nova Ordem de Serviço
       operationId: createWorkOrder
       requestBody:
         required: true
@@ -36,7 +36,13 @@ paths:
               $ref: '#/components/schemas/CreateWorkOrderRequest'
       responses:
         '201':
-          description: Work Order successfully created
+          description: Ordem de Serviço criada com sucesso
+          headers:
+            Location:
+              description: URI canônica do recurso criado
+              schema:
+                type: string
+                example: '/api/v1/work-orders/3fa85f64-5717-4562-b3fc-2c963f66afa6'
           content:
             application/json:
               schema:
@@ -49,50 +55,85 @@ paths:
     get:
       tags:
         - WorkOrder
-      summary: List Work Orders with filters
+      summary: Listar Ordens de Serviço com filtros opcionais e paginação
       operationId: listWorkOrders
       parameters:
         - name: status
           in: query
           required: false
+          description: Filtrar por status da Ordem de Serviço
           schema:
             type: string
         - name: customerDocument
           in: query
           required: false
+          description: Filtrar por documento (CPF ou CNPJ) do cliente
           schema:
             type: string
         - name: licensePlate
           in: query
           required: false
+          description: Filtrar por placa do veículo
           schema:
             type: string
+        - name: createdFrom
+          in: query
+          required: false
+          description: Data/hora inicial de criação (ISO 8601 UTC)
+          schema:
+            type: string
+            format: date-time
+          example: '2026-10-01T00:00:00Z'
+        - name: createdTo
+          in: query
+          required: false
+          description: Data/hora final de criação (ISO 8601 UTC)
+          schema:
+            type: string
+            format: date-time
+          example: '2026-10-07T23:59:59Z'
+        - name: page
+          in: query
+          required: false
+          description: Índice da página (iniciando em 0)
+          schema:
+            type: integer
+            default: 0
+            minimum: 0
+        - name: size
+          in: query
+          required: false
+          description: Quantidade máxima de registros retornados por página
+          schema:
+            type: integer
+            default: 20
+            minimum: 1
+            maximum: 100
       responses:
         '200':
-          description: List of Work Orders
+          description: Lista paginada de Ordens de Serviço recuperada com sucesso
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/WorkOrderResponse'
+                $ref: '#/components/schemas/PagedWorkOrderResponse'
 
   /api/v1/work-orders/{id}:
     get:
       tags:
         - WorkOrder
-      summary: Get Work Order by identifier
+      summary: Consultar Ordem de Serviço por identificador
       operationId: getWorkOrderById
       parameters:
         - name: id
           in: path
           required: true
+          description: Identificador único da Ordem de Serviço
           schema:
             type: string
             format: uuid
       responses:
         '200':
-          description: Work Order details
+          description: Detalhes da Ordem de Serviço encontrados
           content:
             application/json:
               schema:
@@ -104,12 +145,13 @@ paths:
     patch:
       tags:
         - WorkOrder
-      summary: Update Work Order status (Approve, Cancel, etc.)
+      summary: Atualizar status da Ordem de Serviço (Aprovar, Cancelar, etc.)
       operationId: updateWorkOrderStatus
       parameters:
         - name: id
           in: path
           required: true
+          description: Identificador único da Ordem de Serviço
           schema:
             type: string
             format: uuid
@@ -121,7 +163,7 @@ paths:
               $ref: '#/components/schemas/UpdateStatusRequest'
       responses:
         '200':
-          description: Work Order status updated
+          description: Status da Ordem de Serviço atualizado com sucesso
           content:
             application/json:
               schema:
@@ -131,6 +173,22 @@ paths:
         '422':
           $ref: '#/components/responses/UnprocessableEntity'
 
+  /api/v1/work-orders/metrics/average-time:
+    get:
+      tags:
+        - WorkOrder
+      summary: Apurar e consultar métricas de tempo médio de execução dos serviços
+      operationId: getAverageExecutionTimeMetrics
+      responses:
+        '200':
+          description: Métricas de tempo médio de execução dos serviços recuperadas com sucesso
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ServiceAverageTimeMetricResponse'
+
   # =========================================================================
   # Customer Endpoints
   # =========================================================================
@@ -138,7 +196,7 @@ paths:
     post:
       tags:
         - Customer
-      summary: Register a new Customer
+      summary: Cadastrar um novo Cliente
       operationId: createCustomer
       requestBody:
         required: true
@@ -148,7 +206,13 @@ paths:
               $ref: '#/components/schemas/CreateCustomerRequest'
       responses:
         '201':
-          description: Customer registered successfully
+          description: Cliente cadastrado com sucesso
+          headers:
+            Location:
+              description: URI canônica do recurso criado
+              schema:
+                type: string
+                example: '/api/v1/customers/3fa85f64-5717-4562-b3fc-2c963f66afa6'
           content:
             application/json:
               schema:
@@ -158,28 +222,122 @@ paths:
         '422':
           $ref: '#/components/responses/UnprocessableEntity'
 
-  /api/v1/customers/{document}:
     get:
       tags:
         - Customer
-      summary: Get Customer by Document (CPF or CNPJ)
+      summary: Consultar Cliente por documento (CPF ou CNPJ)
       operationId: getCustomerByDocument
       parameters:
         - name: document
-          in: path
-          required: true
+          in: query
+          required: false
+          description: Documento (CPF ou CNPJ) do cliente
           schema:
             type: string
           example: '52998224725'
+        - name: createdFrom
+          in: query
+          required: false
+          description: Data/hora inicial de criação (ISO 8601 UTC)
+          schema:
+            type: string
+            format: date-time
+          example: '2026-10-01T00:00:00Z'
+        - name: createdTo
+          in: query
+          required: false
+          description: Data/hora final de criação (ISO 8601 UTC)
+          schema:
+            type: string
+            format: date-time
+          example: '2026-10-07T23:59:59Z'
       responses:
         '200':
-          description: Customer details found
+          description: Detalhes do cliente localizados com sucesso
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/CustomerResponse'
         '404':
           $ref: '#/components/responses/NotFound'
+
+  /api/v1/customers/{id}:
+    get:
+      tags:
+        - Customer
+      summary: Consultar Cliente por identificador único (UUID)
+      operationId: getCustomerById
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Identificador único do cliente
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Detalhes do cliente localizados com sucesso
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CustomerResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    patch:
+      tags:
+        - Customer
+      summary: Atualizar dados cadastrais do Cliente parcialmente
+      operationId: updateCustomer
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Identificador único do cliente
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchCustomerRequest'
+      responses:
+        '200':
+          description: Dados do cliente atualizados com sucesso
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CustomerResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+
+    delete:
+      tags:
+        - Customer
+      summary: Excluir Cliente por identificador único (UUID)
+      operationId: deleteCustomerById
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Identificador único do cliente
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Cliente removido com sucesso
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
 
   # =========================================================================
   # Vehicle Endpoints
@@ -188,7 +346,7 @@ paths:
     post:
       tags:
         - Vehicle
-      summary: Register a new Vehicle linked to a Customer
+      summary: Cadastrar um novo Veículo vinculado a um Cliente
       operationId: createVehicle
       requestBody:
         required: true
@@ -198,7 +356,13 @@ paths:
               $ref: '#/components/schemas/CreateVehicleRequest'
       responses:
         '201':
-          description: Vehicle registered successfully
+          description: Veículo cadastrado com sucesso
+          headers:
+            Location:
+              description: URI canônica do recurso criado
+              schema:
+                type: string
+                example: '/api/v1/vehicles/3fa85f64-5717-4562-b3fc-2c963f66afa6'
           content:
             application/json:
               schema:
@@ -208,28 +372,122 @@ paths:
         '422':
           $ref: '#/components/responses/UnprocessableEntity'
 
-  /api/v1/vehicles/{licensePlate}:
     get:
       tags:
         - Vehicle
-      summary: Get Vehicle by License Plate
+      summary: Consultar Veículo por placa
       operationId: getVehicleByLicensePlate
       parameters:
         - name: licensePlate
-          in: path
-          required: true
+          in: query
+          required: false
+          description: Placa do veículo (padrão Mercosul ou antigo)
           schema:
             type: string
           example: 'BRA2E19'
+        - name: createdFrom
+          in: query
+          required: false
+          description: Data/hora inicial de criação (ISO 8601 UTC)
+          schema:
+            type: string
+            format: date-time
+          example: '2026-10-01T00:00:00Z'
+        - name: createdTo
+          in: query
+          required: false
+          description: Data/hora final de criação (ISO 8601 UTC)
+          schema:
+            type: string
+            format: date-time
+          example: '2026-10-07T23:59:59Z'
       responses:
         '200':
-          description: Vehicle details found
+          description: Detalhes do veículo localizados com sucesso
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/VehicleResponse'
         '404':
           $ref: '#/components/responses/NotFound'
+
+  /api/v1/vehicles/{id}:
+    get:
+      tags:
+        - Vehicle
+      summary: Consultar Veículo por identificador único (UUID)
+      operationId: getVehicleById
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Identificador único do veículo
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Detalhes do veículo localizados com sucesso
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VehicleResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    patch:
+      tags:
+        - Vehicle
+      summary: Atualizar dados cadastrais do Veículo parcialmente
+      operationId: updateVehicle
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Identificador único do veículo
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchVehicleRequest'
+      responses:
+        '200':
+          description: Dados do veículo atualizados com sucesso
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VehicleResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+
+    delete:
+      tags:
+        - Vehicle
+      summary: Excluir Veículo por identificador único (UUID)
+      operationId: deleteVehicleById
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Identificador único do veículo
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Veículo removido com sucesso
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
 
   # =========================================================================
   # Service Catalog Endpoints
@@ -238,7 +496,7 @@ paths:
     post:
       tags:
         - ServiceCatalog
-      summary: Register a new garage service in the catalog
+      summary: Cadastrar um novo serviço padronizado no catálogo
       operationId: createService
       requestBody:
         required: true
@@ -248,7 +506,13 @@ paths:
               $ref: '#/components/schemas/CreateServiceCatalogRequest'
       responses:
         '201':
-          description: Service catalog item created
+          description: Serviço cadastrado no catálogo com sucesso
+          headers:
+            Location:
+              description: URI canônica do recurso criado
+              schema:
+                type: string
+                example: '/api/v1/services/3fa85f64-5717-4562-b3fc-2c963f66afa6'
           content:
             application/json:
               schema:
@@ -261,40 +525,74 @@ paths:
     get:
       tags:
         - ServiceCatalog
-      summary: List all service catalog items
+      summary: Listar todos os serviços do catálogo com filtro por código e paginação
       operationId: listServices
       parameters:
-        - name: search
+        - name: code
           in: query
           required: false
+          description: Código padronizado do serviço para filtragem exata
           schema:
             type: string
+          example: 'SRV-OIL-01'
+        - name: createdFrom
+          in: query
+          required: false
+          description: Data/hora inicial de criação (ISO 8601 UTC)
+          schema:
+            type: string
+            format: date-time
+          example: '2026-10-01T00:00:00Z'
+        - name: createdTo
+          in: query
+          required: false
+          description: Data/hora final de criação (ISO 8601 UTC)
+          schema:
+            type: string
+            format: date-time
+          example: '2026-10-07T23:59:59Z'
+        - name: page
+          in: query
+          required: false
+          description: Índice da página (iniciando em 0)
+          schema:
+            type: integer
+            default: 0
+            minimum: 0
+        - name: size
+          in: query
+          required: false
+          description: Quantidade máxima de registros retornados por página
+          schema:
+            type: integer
+            default: 20
+            minimum: 1
+            maximum: 100
       responses:
         '200':
-          description: List of service catalog items
+          description: Lista paginada de serviços do catálogo recuperada com sucesso
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/ServiceCatalogResponse'
+                $ref: '#/components/schemas/PagedServiceCatalogResponse'
 
   /api/v1/services/{id}:
     get:
       tags:
         - ServiceCatalog
-      summary: Get service catalog item by ID
+      summary: Consultar serviço do catálogo por ID
       operationId: getServiceById
       parameters:
         - name: id
           in: path
           required: true
+          description: Identificador único do serviço
           schema:
             type: string
             format: uuid
       responses:
         '200':
-          description: Service catalog details
+          description: Detalhes do serviço localizados com sucesso
           content:
             application/json:
               schema:
@@ -302,34 +600,16 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
 
-    delete:
-      tags:
-        - ServiceCatalog
-      summary: Delete service catalog item
-      operationId: deleteService
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-      responses:
-        '204':
-          description: Service deleted successfully
-        '404':
-          $ref: '#/components/responses/NotFound'
-
-  /api/v1/services/{id}/price:
     patch:
       tags:
         - ServiceCatalog
-      summary: Update labor price of a service
-      operationId: updateServicePrice
+      summary: Atualizar dados cadastrais ou preço de um serviço no catálogo
+      operationId: updateService
       parameters:
         - name: id
           in: path
           required: true
+          description: Identificador único do serviço
           schema:
             type: string
             format: uuid
@@ -338,14 +618,37 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/UpdateServiceCatalogPriceRequest'
+              $ref: '#/components/schemas/PatchServiceCatalogRequest'
       responses:
         '200':
-          description: Service price updated
+          description: Serviço do catálogo atualizado com sucesso
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ServiceCatalogResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+
+    delete:
+      tags:
+        - ServiceCatalog
+      summary: Remover item do catálogo de serviços
+      operationId: deleteService
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Identificador único do serviço
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Serviço removido com sucesso
         '404':
           $ref: '#/components/responses/NotFound'
 
@@ -356,7 +659,7 @@ paths:
     post:
       tags:
         - Material
-      summary: Register a new spare part or material in the catalog
+      summary: Cadastrar uma nova peça ou material no catálogo
       operationId: createMaterial
       requestBody:
         required: true
@@ -366,7 +669,13 @@ paths:
               $ref: '#/components/schemas/CreateMaterialRequest'
       responses:
         '201':
-          description: Material created successfully
+          description: Material cadastrado com sucesso
+          headers:
+            Location:
+              description: URI canônica do recurso criado
+              schema:
+                type: string
+                example: '/api/v1/materials/3fa85f64-5717-4562-b3fc-2c963f66afa6'
           content:
             application/json:
               schema:
@@ -379,40 +688,74 @@ paths:
     get:
       tags:
         - Material
-      summary: List all materials with optional search
+      summary: Listar todas as peças e materiais com filtro por SKU e paginação
       operationId: listMaterials
       parameters:
-        - name: search
+        - name: sku
           in: query
           required: false
+          description: SKU único da peça/material para filtragem exata
           schema:
             type: string
+          example: 'PART-BRK-01'
+        - name: createdFrom
+          in: query
+          required: false
+          description: Data/hora inicial de criação (ISO 8601 UTC)
+          schema:
+            type: string
+            format: date-time
+          example: '2026-10-01T00:00:00Z'
+        - name: createdTo
+          in: query
+          required: false
+          description: Data/hora final de criação (ISO 8601 UTC)
+          schema:
+            type: string
+            format: date-time
+          example: '2026-10-07T23:59:59Z'
+        - name: page
+          in: query
+          required: false
+          description: Índice da página (iniciando em 0)
+          schema:
+            type: integer
+            default: 0
+            minimum: 0
+        - name: size
+          in: query
+          required: false
+          description: Quantidade máxima de registros retornados por página
+          schema:
+            type: integer
+            default: 20
+            minimum: 1
+            maximum: 100
       responses:
         '200':
-          description: List of materials
+          description: Lista paginada de materiais recuperada com sucesso
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/MaterialResponse'
+                $ref: '#/components/schemas/PagedMaterialResponse'
 
   /api/v1/materials/{id}:
     get:
       tags:
         - Material
-      summary: Get material details by ID
+      summary: Consultar detalhes de um material por ID
       operationId: getMaterialById
       parameters:
         - name: id
           in: path
           required: true
+          description: Identificador único do material
           schema:
             type: string
             format: uuid
       responses:
         '200':
-          description: Material details
+          description: Detalhes do material localizados com sucesso
           content:
             application/json:
               schema:
@@ -420,34 +763,16 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
 
-    delete:
-      tags:
-        - Material
-      summary: Delete material
-      operationId: deleteMaterial
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-      responses:
-        '204':
-          description: Material deleted successfully
-        '404':
-          $ref: '#/components/responses/NotFound'
-
-  /api/v1/materials/{id}/price:
     patch:
       tags:
         - Material
-      summary: Update material unit price and cost
-      operationId: updateMaterialPrice
+      summary: Atualizar dados cadastrais, preços de venda ou custo de um material
+      operationId: updateMaterial
       parameters:
         - name: id
           in: path
           required: true
+          description: Identificador único do material
           schema:
             type: string
             format: uuid
@@ -456,14 +781,37 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/UpdateMaterialPriceRequest'
+              $ref: '#/components/schemas/PatchMaterialRequest'
       responses:
         '200':
-          description: Material price updated
+          description: Material atualizado com sucesso
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/MaterialResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+
+    delete:
+      tags:
+        - Material
+      summary: Remover material do catálogo
+      operationId: deleteMaterial
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Identificador único do material
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Material removido com sucesso
         '404':
           $ref: '#/components/responses/NotFound'
 
@@ -474,6 +822,7 @@ components:
     # -----------------------------------------------------------------------
     CreateWorkOrderRequest:
       type: object
+      description: Requisição para abertura de Ordem de Serviço
       required:
         - customerDocument
         - licensePlate
@@ -482,15 +831,19 @@ components:
         customerDocument:
           type: string
           example: '52998224725'
+          description: Documento (CPF ou CNPJ) do cliente solicitante
         licensePlate:
           type: string
           example: 'BRA2E19'
+          description: Placa do veículo associado
         description:
           type: string
-          example: 'Regular maintenance and brake inspection'
+          example: 'Manutenção periódica e revisão dos freios'
+          description: Descrição do problema ou solicitação relatada
 
     UpdateStatusRequest:
       type: object
+      description: Requisição para atualização de status da Ordem de Serviço
       required:
         - status
       properties:
@@ -498,119 +851,212 @@ components:
           type: string
           enum: [RECEIVED, DIAGNOSING, WAITING_APPROVAL, WAITING_FOR_APPROVAL, APPROVED, EXECUTING, COMPLETED, DELIVERED, CANCELED]
           example: 'APPROVED'
+          description: Novo status da Ordem de Serviço
         reason:
           type: string
-          example: 'Customer approved the budget'
+          example: 'Cliente aprovou o orçamento'
+          description: Justificativa da alteração de status
 
     WorkOrderServiceItemResponse:
       type: object
+      description: Item de mão de obra/serviço incluído na Ordem de Serviço
       properties:
         id:
           type: string
           format: uuid
+          description: Identificador único do item
         serviceId:
           type: string
           format: uuid
+          description: Identificador do serviço no catálogo
         itemName:
           type: string
+          description: Nome do serviço no momento da inclusão
         itemCode:
           type: string
+          description: Código do serviço no momento da inclusão
         unitPrice:
           type: number
           format: double
+          description: Preço unitário aplicado
         quantity:
           type: integer
+          description: Quantidade aplicada
         subtotal:
           type: number
           format: double
+          description: Subtotal deste item
         createdAt:
           type: string
           format: date-time
+          description: Data e hora de inclusão do item
 
     WorkOrderMaterialItemResponse:
       type: object
+      description: Item de peça/material incluído na Ordem de Serviço
       properties:
         id:
           type: string
           format: uuid
+          description: Identificador único do item
         materialId:
           type: string
           format: uuid
+          description: Identificador da peça no catálogo
         itemName:
           type: string
+          description: Nome da peça no momento da inclusão
         itemSku:
           type: string
+          description: SKU da peça no momento da inclusão
         unitPrice:
           type: number
           format: double
+          description: Preço unitário aplicado
         quantity:
           type: integer
+          description: Quantidade utilizada
         subtotal:
           type: number
           format: double
+          description: Subtotal deste material
         createdAt:
           type: string
           format: date-time
+          description: Data e hora de inclusão da peça
 
     WorkOrderStatusHistoryResponse:
       type: object
+      description: Registro histórico de transição de status da Ordem de Serviço
       properties:
         id:
           type: string
           format: uuid
+          description: Identificador único do registro de histórico
         fromStatus:
           type: string
+          description: Status anterior
         toStatus:
           type: string
+          description: Status resultante
         reason:
           type: string
+          description: Motivo ou justificativa da transição
         changedAt:
           type: string
           format: date-time
+          description: Data e hora da transição
         changedBy:
           type: string
+          description: Responsável ou sistema que realizou a alteração
 
     WorkOrderResponse:
       type: object
+      description: Dados consolidados da Ordem de Serviço
       properties:
         id:
           type: string
           format: uuid
+          description: Identificador único da Ordem de Serviço
         customerDocument:
           type: string
+          description: Documento do cliente
         licensePlate:
           type: string
+          description: Placa do veículo
         status:
           type: string
+          description: Status atual da Ordem de Serviço
         description:
           type: string
+          description: Descrição do atendimento
         totalAmount:
           type: number
           format: double
+          description: Valor total acumulado (serviços + peças)
         services:
           type: array
+          description: Lista de serviços adicionados
           items:
             $ref: '#/components/schemas/WorkOrderServiceItemResponse'
         materials:
           type: array
+          description: Lista de materiais adicionados
           items:
             $ref: '#/components/schemas/WorkOrderMaterialItemResponse'
         statusHistory:
           type: array
+          description: Trilha de auditoria das transições de status
           items:
             $ref: '#/components/schemas/WorkOrderStatusHistoryResponse'
         createdAt:
           type: string
           format: date-time
+          description: Data e hora de abertura
         updatedAt:
           type: string
           format: date-time
+          description: Data e hora da última modificação
+
+    PagedWorkOrderResponse:
+      type: object
+      description: Resposta paginada de Ordens de Serviço
+      properties:
+        content:
+          type: array
+          items:
+            $ref: '#/components/schemas/WorkOrderResponse'
+        page:
+          type: integer
+          example: 0
+          description: Índice da página atual
+        size:
+          type: integer
+          example: 20
+          description: Quantidade máxima de registros por página
+        totalElements:
+          type: integer
+          format: int64
+          example: 42
+          description: Quantidade total de registros encontrados
+        totalPages:
+          type: integer
+          example: 3
+          description: Quantidade total de páginas disponíveis
+
+    ServiceAverageTimeMetricResponse:
+      type: object
+      description: Métrica de tempo médio real apurado para um serviço
+      properties:
+        serviceId:
+          type: string
+          format: uuid
+          description: Identificador do serviço
+        serviceCode:
+          type: string
+          example: 'SRV-OIL-01'
+          description: Código identificador do serviço
+        serviceName:
+          type: string
+          example: 'Troca de Óleo e Filtro'
+          description: Nome do serviço
+        averageMinutes:
+          type: integer
+          format: int64
+          example: 45
+          description: Média de duração calculada em minutos
+        totalCompletedOrders:
+          type: integer
+          format: int64
+          example: 12
+          description: Quantidade total de ordens concluídas consideradas na média
 
     # -----------------------------------------------------------------------
     # Customer Schemas
     # -----------------------------------------------------------------------
     CreateCustomerRequest:
       type: object
+      description: Requisição de cadastro de novo cliente
       required:
         - document
         - name
@@ -619,38 +1065,63 @@ components:
         document:
           type: string
           example: '52998224725'
+          description: CPF ou CNPJ do cliente (apenas dígitos)
         name:
           type: string
           example: 'Carlos Silva'
+          description: Nome completo ou razão social
         email:
           type: string
           format: email
           example: 'carlos.silva@example.com'
+          description: Endereço de e-mail de contato
 
     CustomerResponse:
       type: object
+      description: Detalhes cadastrais do cliente
       properties:
         id:
           type: string
           format: uuid
+          description: Identificador único do cliente
         name:
           type: string
+          description: Nome completo
         email:
           type: string
+          description: E-mail cadastrado
         document:
           type: string
+          description: CPF ou CNPJ formatado ou numérico
         createdAt:
           type: string
           format: date-time
+          description: Data e hora do cadastro
         updatedAt:
           type: string
           format: date-time
+          description: Data e hora da última atualização
+
+    PatchCustomerRequest:
+      type: object
+      description: Requisição de atualização parcial dos dados do cliente
+      properties:
+        name:
+          type: string
+          example: 'Carlos Silva'
+          description: Nome completo ou razão social atualizado
+        email:
+          type: string
+          format: email
+          example: 'carlos.silva@example.com'
+          description: Endereço de e-mail atualizado
 
     # -----------------------------------------------------------------------
     # Vehicle Schemas
     # -----------------------------------------------------------------------
     CreateVehicleRequest:
       type: object
+      description: Requisição de cadastro de novo veículo
       required:
         - licensePlate
         - customerDocument
@@ -659,50 +1130,95 @@ components:
         licensePlate:
           type: string
           example: 'BRA2E19'
+          description: Placa do veículo
         customerDocument:
           type: string
           example: '52998224725'
+          description: Documento do cliente proprietário
         make:
           type: string
           example: 'Toyota'
+          description: Marca/montadora
         brand:
           type: string
           example: 'Toyota'
+          description: Marca (alias compatível)
         model:
           type: string
           example: 'Corolla'
+          description: Modelo do veículo
         manufactureYear:
           type: integer
           example: 2023
+          description: Ano de fabricação
         year:
           type: integer
           example: 2023
+          description: Ano do modelo
+        
+    PatchVehicleRequest:
+      type: object
+      description: Requisição de atualização parcial dos dados do veículo
+      properties:
+        make:
+          type: string
+          example: 'Toyota'
+          description: Marca do veículo atualizada
+        brand:
+          type: string
+          example: 'Toyota'
+          description: Marca do veículo atualizada (alias compatível)
+        model:
+          type: string
+          example: 'Corolla'
+          description: Modelo do veículo atualizado
+        manufactureYear:
+          type: integer
+          example: 2024
+          description: Ano de fabricação atualizado
+        year:
+          type: integer
+          example: 2024
+          description: Ano do modelo atualizado (alias compatível)
 
     VehicleResponse:
       type: object
+      description: Detalhes cadastrais do veículo
       properties:
         id:
           type: string
           format: uuid
+          description: Identificador único do veículo
         customerDocument:
           type: string
+          description: Documento do cliente proprietário
         licensePlate:
           type: string
+          description: Placa do veículo
         make:
           type: string
+          description: Marca do veículo
         model:
           type: string
+          description: Modelo do veículo
         manufactureYear:
           type: integer
+          description: Ano de fabricação
         createdAt:
           type: string
           format: date-time
+          description: Data e hora do cadastro
+        updatedAt:
+          type: string
+          format: date-time
+          description: Data e hora da última atualização cadastral
 
     # -----------------------------------------------------------------------
     # Service Catalog Schemas
     # -----------------------------------------------------------------------
     CreateServiceCatalogRequest:
       type: object
+      description: Requisição de cadastro de serviço padronizado no catálogo
       required:
         - code
         - name
@@ -711,61 +1227,110 @@ components:
         code:
           type: string
           example: 'SRV-OIL-01'
+          description: Código identificador do serviço
         name:
           type: string
           example: 'Troca de Óleo e Filtro'
+          description: Nome do serviço
         description:
           type: string
           example: 'Substituição completa do óleo e filtro do motor'
+          description: Descrição das atividades incluídas
         price:
           type: number
           format: double
           example: 150.00
-        estimatedMinutes:
-          type: integer
-          format: int64
-          example: 60
+          description: Preço padrão da mão de obra
 
-    UpdateServiceCatalogPriceRequest:
+    PatchServiceCatalogRequest:
       type: object
-      required:
-        - price
+      description: Requisição de atualização parcial dos dados do serviço no catálogo
       properties:
+        name:
+          type: string
+          example: 'Troca de Óleo e Filtro de Alta Performance'
+          description: Nome atualizado do serviço
+        description:
+          type: string
+          example: 'Substituição completa do óleo 5W30 sintético e filtro'
+          description: Descrição atualizada
         price:
           type: number
           format: double
           example: 180.00
+          description: Preço atualizado da mão de obra
+        estimatedMinutes:
+          type: integer
+          format: int64
+          example: 60
+          description: Tempo estimado de execução em minutos
 
     ServiceCatalogResponse:
       type: object
+      description: Detalhes do serviço no catálogo
       properties:
         id:
           type: string
           format: uuid
+          description: Identificador único do serviço
         code:
           type: string
+          description: Código padronizado
         name:
           type: string
+          description: Nome do serviço
         description:
           type: string
+          description: Descrição do serviço
         price:
           type: number
           format: double
+          description: Preço atual da mão de obra
         estimatedMinutes:
           type: integer
           format: int64
+          description: Tempo médio real de execução apurado em minutos
         createdAt:
           type: string
           format: date-time
+          description: Data e hora de criação
         updatedAt:
           type: string
           format: date-time
+          description: Data e hora da última atualização
+
+    PagedServiceCatalogResponse:
+      type: object
+      description: Resposta paginada de serviços do catálogo
+      properties:
+        content:
+          type: array
+          items:
+            $ref: '#/components/schemas/ServiceCatalogResponse'
+        page:
+          type: integer
+          example: 0
+          description: Índice da página atual
+        size:
+          type: integer
+          example: 20
+          description: Quantidade máxima de registros por página
+        totalElements:
+          type: integer
+          format: int64
+          example: 15
+          description: Quantidade total de registros encontrados
+        totalPages:
+          type: integer
+          example: 1
+          description: Quantidade total de páginas disponíveis
 
     # -----------------------------------------------------------------------
     # Material Schemas
     # -----------------------------------------------------------------------
     CreateMaterialRequest:
       type: object
+      description: Requisição de cadastro de peça ou material
       required:
         - sku
         - name
@@ -774,115 +1339,183 @@ components:
         sku:
           type: string
           example: 'PART-BRK-01'
+          description: Código SKU único da peça
         name:
           type: string
           example: 'Pastilha de Freio Dianteira'
+          description: Nome da peça ou material
         description:
           type: string
           example: 'Pastilhas cerâmicas para eixo dianteiro'
+          description: Descrição técnica ou especificação
         unitCost:
           type: number
           format: double
           example: 80.00
+          description: Custo unitário de aquisição
         unitPrice:
           type: number
           format: double
           example: 140.00
+          description: Preço unitário de venda
         initialStock:
           type: integer
           example: 20
+          description: Quantidade inicial em estoque
         minStock:
           type: integer
           example: 5
+          description: Nível mínimo de segurança para reposição
 
-    UpdateMaterialPriceRequest:
+    PatchMaterialRequest:
       type: object
-      required:
-        - unitPrice
+      description: Requisição de atualização parcial dos dados e precificação do material
       properties:
-        unitPrice:
-          type: number
-          format: double
-          example: 155.00
+        name:
+          type: string
+          example: 'Pastilha de Freio Cerâmica Premium'
+          description: Nome comercial atualizado da peça
+        description:
+          type: string
+          example: 'Pastilhas cerâmicas para alto rendimento'
+          description: Descrição atualizada
         unitCost:
           type: number
           format: double
           example: 85.00
+          description: Custo unitário de aquisição atualizado
+        unitPrice:
+          type: number
+          format: double
+          example: 155.00
+          description: Preço unitário de venda atualizado
+        minStock:
+          type: integer
+          example: 10
+          description: Nível mínimo de estoque atualizado
 
     MaterialResponse:
       type: object
+      description: Detalhes cadastrais e de estoque da peça/material
       properties:
         id:
           type: string
           format: uuid
+          description: Identificador único do material
         sku:
           type: string
+          description: SKU da peça
         name:
           type: string
+          description: Nome do material
         description:
           type: string
+          description: Descrição técnica
         unitCost:
           type: number
           format: double
+          description: Custo unitário
         unitPrice:
           type: number
           format: double
+          description: Preço de venda unitário
         stockQuantity:
           type: integer
+          description: Quantidade total física em estoque
         reservedQuantity:
           type: integer
+          description: Quantidade reservada para ordens em andamento
         availableQuantity:
           type: integer
+          description: Quantidade disponível para novas ordens
         minStock:
           type: integer
+          description: Estoque mínimo recomendado
         createdAt:
           type: string
           format: date-time
+          description: Data e hora do cadastro
         updatedAt:
           type: string
           format: date-time
+          description: Data e hora da última alteração
+
+    PagedMaterialResponse:
+      type: object
+      description: Resposta paginada de peças e materiais
+      properties:
+        content:
+          type: array
+          items:
+            $ref: '#/components/schemas/MaterialResponse'
+        page:
+          type: integer
+          example: 0
+          description: Índice da página atual
+        size:
+          type: integer
+          example: 20
+          description: Quantidade máxima de registros por página
+        totalElements:
+          type: integer
+          format: int64
+          example: 50
+          description: Quantidade total de registros encontrados
+        totalPages:
+          type: integer
+          example: 3
+          description: Quantidade total de páginas disponíveis
 
     # -----------------------------------------------------------------------
     # ProblemDetail (RFC 7807/9457)
     # -----------------------------------------------------------------------
     ProblemDetail:
       type: object
+      description: Estrutura padrão de erro RFC 7807/9457
       properties:
         type:
           type: string
           format: uri
+          description: URI que identifica o tipo do problema
         title:
           type: string
+          description: Resumo curto e legível do erro
         status:
           type: integer
+          description: Código de status HTTP
         detail:
           type: string
+          description: Detalhes explicativos do erro ocorrido
         instance:
           type: string
           format: uri
+          description: URI da requisição causadora do erro
         errorCode:
           type: string
+          description: Código de erro de negócio padronizado
         timestamp:
           type: string
           format: date-time
+          description: Data e hora da ocorrência
         traceId:
           type: string
+          description: Identificador de rastreamento distribuído
 
   responses:
     BadRequest:
-      description: Bad Request
+      description: Requisição Inválida (Bad Request)
       content:
         application/problem+json:
           schema:
             $ref: '#/components/schemas/ProblemDetail'
     NotFound:
-      description: Resource Not Found
+      description: Recurso Não Encontrado (Not Found)
       content:
         application/problem+json:
           schema:
             $ref: '#/components/schemas/ProblemDetail'
     UnprocessableEntity:
-      description: Validation or Domain Exception
+      description: Erro de Validação ou Regra de Domínio (Unprocessable Entity)
       content:
         application/problem+json:
           schema:
