@@ -99,4 +99,22 @@ class WorkOrderMetricsServiceTest {
         assertThat(metrics.get(0).totalCompletedOrders()).isEqualTo(1L);
         verify(serviceCatalogRepository).save(any(ServiceCatalog.class));
     }
+
+    @Test
+    @DisplayName("Should filter metrics by serviceCode when filter is provided")
+    void shouldFilterMetricsByServiceCode() {
+        ServiceCatalog service1 = ServiceCatalog.create("SRV-OIL-01", "Oil Change", "Engine oil", Money.of(new BigDecimal("150.00")));
+        ServiceCatalog service2 = ServiceCatalog.create("SRV-BRK-01", "Brake Pad", "Brakes", Money.of(new BigDecimal("200.00")));
+
+        when(serviceCatalogRepository.findAll()).thenReturn(List.of(service1, service2));
+        when(workOrderRepository.findAll()).thenReturn(List.of());
+
+        List<ServiceAverageTimeMetric> filtered = metricsService.calculateAndGetAverageExecutionTimes("SRV-OIL-01");
+
+        assertThat(filtered).hasSize(1);
+        assertThat(filtered.get(0).serviceCode()).isEqualTo("SRV-OIL-01");
+
+        List<ServiceAverageTimeMetric> all = metricsService.calculateAndGetAverageExecutionTimes(null);
+        assertThat(all).hasSize(2);
+    }
 }

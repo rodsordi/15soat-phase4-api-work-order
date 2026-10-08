@@ -10,6 +10,7 @@ Este diretório contém os registros formais de decisões de arquitetura (**ADRs
 | :---: | :--- | :---: | :---: |
 | **[ADR 0001](0001-customer-and-vehicle-master-data-lifecycle.md)** | Gestão Mestre de Clientes, Veículos e Ciclo de Vida Reutilizável | **Aceito** | 2026-10-02 |
 | **[ADR 0002](0002-relational-work-order-items-and-price-snapshots.md)** | Modelagem Relacional de Itens de Ordem de Serviço com Snapshot Imutável de Preços | **Aceito** | 2026-10-02 |
+| **[ADR 0003](0003-customer-summary-vehicles-composition.md)** | Composição Pragmática de Veículos em Resumo de Clientes para Usabilidade Operacional de Balcão | **Aceito** | 2026-10-08 |
 
 ---
 
