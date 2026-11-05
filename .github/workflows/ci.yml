@@ -89,7 +89,7 @@ jobs:
     env:
       AWS_REGION: ${{ vars.AWS_REGION || secrets.AWS_REGION || 'us-east-1' }}
       ECR_REPOSITORY: 15soat-phase4-api-work-order
-      EKS_CLUSTER_NAME: fiap-workshop-eks-prd
+      EKS_CLUSTER_NAME: ${{ vars.EKS_CLUSTER_NAME || secrets.EKS_CLUSTER_NAME || 'fiap-workshop-eks' }}
 
     steps:
       - name: Checkout Repository
