@@ -16,7 +16,7 @@ RUN mvn clean package -DskipTests || true
 FROM eclipse-temurin:25-jre-noble AS runner
 
 # Create dedicated non-root user and group
-RUN groupadd -r appgroup && useradd -r -g appgroup -u 1000 appuser
+RUN groupadd -r -g 10001 appgroup && useradd -r -u 10001 -g appgroup appuser
 
 WORKDIR /app
 
