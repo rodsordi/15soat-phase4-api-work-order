@@ -70,4 +70,17 @@ public class Vehicle {
         return new Vehicle(UUID.randomUUID(), customer, new LicensePlate(licensePlate).value(), make, model, manufactureYear,
                 Instant.now(), Instant.now());
     }
+
+    public void update(String make, String model, Integer manufactureYear) {
+        if (make != null && !make.isBlank()) {
+            this.make = make;
+        }
+        if (model != null && !model.isBlank()) {
+            this.model = model;
+        }
+        if (manufactureYear != null) {
+            this.manufactureYear = manufactureYear;
+        }
+        this.updatedAt = Instant.now();
+    }
 }

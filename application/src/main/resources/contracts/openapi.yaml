@@ -1,22 +1,58 @@
 openapi: 3.0.3
 info:
-  title: Work Order API
-  description: Microservice responsible for opening, managing, estimating and tracking Work Orders, Customer and Vehicle registries, and workshop catalogs.
+  title: API de Ordens de Serviço
+  description: |
+    Microsserviço responsável pela abertura, gerenciamento, orçamentação e rastreamento de Ordens de Serviço, cadastros de Clientes e Veículos, e catálogos de serviços e materiais da oficina.
+
+    ### 📐 Padrões Arquiteturais e Conformidade Técnica (RFCs & ADRs)
+    - **Navegação Hipermídia (HATEOAS / Richardson Maturity Model Nível 3)**:
+      - Implementado via padrão HAL (*Hypertext Application Language* - `draft-kelly-json-hal-08` / **RFC 8288**).
+      - Respostas expõem o nó `_links` contendo links de autodescoberta (`self`) e relacionamentos de dependência.
+      - Suporte a templates de URI parametrizados conforme **RFC 6570** (`templated: boolean`).
+      - Identificadores e referências canônicas estruturadas de acordo com **RFC 3986**.
+    - **Tratamento Padronizado de Erros (RFC 7807 / RFC 9457)**:
+      - Respostas de falha de validação e regras de negócio estruturadas no padrão canônico *Problem Details for HTTP APIs* (`application/problem+json`).
+    - **Granularidade e Simetria de DTOs (ADR-0003)**:
+      - `*SummaryResponse`: Projeção plana e leve otimizada para listagens paginadas (`Paged*Response`), contendo `_links.self` para navegação direta ao recurso completo.
+      - `*DetailedResponse`: Modelo completo para consultas pontuais (`GET /{id}`), incluindo auditoria e relações expandidas.
+      - `*ItemResponse`: Representação compacta embutida para entidades associadas (evita acoplamento cíclico e tráfego desnecessário de dados).
   version: 1.0.0
+  contact:
+    name: FIAP SOAT Architecture & Engineering Team
+    url: https://github.com/15soat-org
+    email: contato@fiap.com.br
+  license:
+    name: MIT License
+    url: https://opensource.org/licenses/MIT
+externalDocs:
+  description: Repositório e Documentação Técnica de Arquitetura (ADRs)
+  url: https://github.com/15soat-org/15soat-phase4-api-work-order
 servers:
+  - url: http://localhost:8080
+    description: Servidor de desenvolvimento local
   - url: /
-    description: Current Server
+    description: Gateway / Servidor Atual
+security:
+  - BearerAuth: []
 tags:
   - name: WorkOrder
-    description: Work Order management operations
+    description: |
+      Operações de gestão do ciclo de vida das Ordens de Serviço.
+
+      **Máquina de Estados e Transições de Domínio**:
+      - *Fluxo Principal*: `RECEIVED` ➔ `DIAGNOSING` ➔ `WAITING_APPROVAL` ➔ `APPROVED` ➔ `EXECUTING` ➔ `COMPLETED` ➔ `DELIVERED`
+      - *Desvios e Estados Terminais*:
+        - `CANCELED`: Transição permitida a partir de `RECEIVED`, `DIAGNOSING` ou `WAITING_APPROVAL` (Terminal).
+        - `PAYMENT_REJECTED`: Decorrente de falha na autorização de pagamento em `WAITING_APPROVAL` (permite reavaliação ou cancelamento).
+        - `DELIVERED`: Conclusão com retirada do veículo pelo cliente (Terminal).
   - name: Customer
-    description: Customer registration and retrieval operations
+    description: Operações de cadastro e consulta de Clientes
   - name: Vehicle
-    description: Vehicle registration and retrieval operations
+    description: Operações de cadastro e consulta de Veículos
   - name: ServiceCatalog
-    description: Workshop service catalog and labor pricing operations
+    description: Operações do catálogo de serviços padronizados e precificação de mão de obra
   - name: Material
-    description: Spare parts and materials catalog and inventory operations
+    description: Operações do catálogo de peças de reposição, estoque e materiais
 
 paths:
   # =========================================================================
@@ -26,7 +62,12 @@ paths:
     post:
       tags:
         - WorkOrder
-      summary: Create a new Work Order
+      summary: Criar uma nova Ordem de Serviço
+      description: |
+        Abre uma nova Ordem de Serviço no sistema para um cliente e veículo previamente cadastrados.
+        Permite a inclusão preliminar de serviços do catálogo e materiais/peças do estoque, inicializando
+        o ciclo de vida no status `RECEIVED`. Retorna o cabeçalho `Location` com a URI canônica do recurso criado
+        e payload detalhado com links hipermídia HAL (`_links.self`).
       operationId: createWorkOrder
       requestBody:
         required: true
@@ -34,102 +75,218 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/CreateWorkOrderRequest'
+            examples:
+              simpleDiagnosis:
+                summary: Abertura simples / Diagnóstico inicial
+                description: Ordem de serviço aberta sem serviços ou peças pré-alocados para triagem inicial.
+                value:
+                  customerDocument: '52998224725'
+                  licensePlate: 'BRA2E19'
+                  description: 'Ruído metálico ao acionar freios dianteiros em baixa velocidade'
+                  services: []
+                  materials: []
+              preventiveService:
+                summary: Revisão preventiva (apenas serviços)
+                description: Ordem de serviço com serviço pré-cadastrado do catálogo sem requisição imediata de peças.
+                value:
+                  customerDocument: '52998224725'
+                  licensePlate: 'BRA2E19'
+                  description: 'Revisão periódica de 10.000 km com troca de óleo e filtro'
+                  services:
+                    - serviceId: '7c7da75e-1ced-4520-9362-e328bba8b4ae'
+                      quantity: 1
+                  materials: []
+              fullCorrectiveMaintenance:
+                summary: Manutenção corretiva completa (serviços e peças)
+                description: Ordem de serviço completa envolvendo mão de obra e requisição de materiais/peças do estoque.
+                value:
+                  customerDocument: '52998224725'
+                  licensePlate: 'BRA2E19'
+                  description: 'Substituição das pastilhas de freio dianteiras e fluido de freio'
+                  services:
+                    - serviceId: '7c7da75e-1ced-4520-9362-e328bba8b4ae'
+                      quantity: 1
+                  materials:
+                    - materialId: '4a1e9447-e6f1-460d-9b0d-b4b0e8c7c103'
+                      quantity: 2
       responses:
         '201':
-          description: Work Order successfully created
+          description: Ordem de Serviço criada com sucesso
+          headers:
+            Location:
+              description: URI canônica do recurso criado
+              schema:
+                type: string
+                example: '/api/v1/work-orders/3fa85f64-5717-4562-b3fc-2c963f66afa6'
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/WorkOrderResponse'
+                $ref: '#/components/schemas/WorkOrderDetailedResponse'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
         '422':
           $ref: '#/components/responses/UnprocessableEntity'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
 
     get:
       tags:
         - WorkOrder
-      summary: List Work Orders with filters
+      summary: Listar Ordens de Serviço com filtros opcionais e paginação
+      description: |
+        Recupera uma lista paginada de Ordens de Serviço em projeção resumida (`PagedWorkOrderResponse`),
+        otimizada para listagens de dashboard e triagem. Suporta filtros combinados por status operacional,
+        documento do cliente (CPF/CNPJ), placa do veículo, intervalo temporal de criação e ordenação dinâmica.
+        Contempla links de navegação hipermídia HAL (`_links.first`, `prev`, `next`, `last`).
       operationId: listWorkOrders
       parameters:
         - name: status
           in: query
           required: false
+          description: Filtrar por status da Ordem de Serviço
           schema:
-            type: string
+            $ref: '#/components/schemas/WorkOrderStatus'
+          example: 'RECEIVED'
         - name: customerDocument
           in: query
           required: false
+          description: Filtrar por documento (CPF ou CNPJ) do cliente
           schema:
             type: string
+            pattern: '^\d{11}$|^\d{14}$'
+            minLength: 11
+            maxLength: 14
+          example: '52998224725'
         - name: licensePlate
           in: query
           required: false
+          description: Filtrar por placa do veículo
           schema:
             type: string
+            pattern: '^[A-Z]{3}[0-9][A-Z0-9][0-9]{2}$|^[A-Z]{3}-?[0-9]{4}$'
+            maxLength: 10
+          example: 'BRA2E19'
+        - $ref: '#/components/parameters/CreatedFromQueryParam'
+        - $ref: '#/components/parameters/CreatedToQueryParam'
+        - $ref: '#/components/parameters/PageQueryParam'
+        - $ref: '#/components/parameters/SizeQueryParam'
+        - $ref: '#/components/parameters/SortQueryParam'
       responses:
         '200':
-          description: List of Work Orders
+          description: Lista paginada de Ordens de Serviço recuperada com sucesso
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/WorkOrderResponse'
+                $ref: '#/components/schemas/PagedWorkOrderResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
 
   /api/v1/work-orders/{id}:
     get:
       tags:
         - WorkOrder
-      summary: Get Work Order by identifier
+      summary: Consultar Ordem de Serviço por identificador
+      description: |
+        Localiza e retorna os detalhes completos de uma Ordem de Serviço específica (`WorkOrderDetailedResponse`).
+        Contempla dados cadastrais do cliente e veículo, auditoria temporal, histórico e lista completa
+        de itens de serviços e materiais aplicados com subtotais e link hipermídia HAL (`_links.self`).
       operationId: getWorkOrderById
       parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
+        - $ref: '#/components/parameters/IdPathParam'
       responses:
         '200':
-          description: Work Order details
+          description: Detalhes da Ordem de Serviço encontrados
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/WorkOrderResponse'
+                $ref: '#/components/schemas/WorkOrderDetailedResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
 
-  /api/v1/work-orders/{id}/status:
     patch:
       tags:
         - WorkOrder
-      summary: Update Work Order status (Approve, Cancel, etc.)
+      summary: Atualizar Ordem de Serviço parcialmente (Status, etc.)
+      description: |
+        Aplica transições no ciclo de vida da Ordem de Serviço de acordo com a máquina de estados do domínio.
+        Permite registrar justificativas operacionais para aprovação do orçamento (`APPROVED`), início da execução
+        física no box (`EXECUTING`), finalização dos serviços (`COMPLETED`) ou cancelamento (`CANCELED`).
+        Dispara eventos de domínio para os tópicos de mensageria correspondentes.
       operationId: updateWorkOrderStatus
       parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
+        - $ref: '#/components/parameters/IdPathParam'
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/UpdateStatusRequest'
+              $ref: '#/components/schemas/UpdateWorkOrderStatusRequest'
+            examples:
+              approveOrder:
+                summary: Aprovação de orçamento (APPROVED)
+                description: Cliente aprovou o orçamento gerado após diagnóstico.
+                value:
+                  status: 'APPROVED'
+                  reason: 'Cliente aprovou o orçamento presencialmente na oficina'
+              startExecution:
+                summary: Início de execução (EXECUTING)
+                description: Mecânico assumiu o veículo no box e iniciou o reparo.
+                value:
+                  status: 'EXECUTING'
+                  reason: 'Veículo posicionado no elevador 02 para execução dos serviços'
+              completeOrder:
+                summary: Conclusão dos serviços (COMPLETED)
+                description: Todos os serviços e montagens foram finalizados com teste de rodagem aprovado.
+                value:
+                  status: 'COMPLETED'
+                  reason: 'Serviços finalizados e veículo aprovado no teste de qualidade'
+              cancelOrder:
+                summary: Cancelamento da ordem (CANCELED)
+                description: Ordem cancelada por desistência do cliente ou inviabilidade técnica.
+                value:
+                  status: 'CANCELED'
+                  reason: 'Cliente optou por não realizar o serviço devido ao custo das peças'
       responses:
         '200':
-          description: Work Order status updated
+          description: Ordem de Serviço atualizada com sucesso
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/WorkOrderResponse'
+                $ref: '#/components/schemas/WorkOrderDetailedResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
         '422':
           $ref: '#/components/responses/UnprocessableEntity'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
 
   # =========================================================================
   # Customer Endpoints
@@ -138,7 +295,11 @@ paths:
     post:
       tags:
         - Customer
-      summary: Register a new Customer
+      summary: Cadastrar um novo Cliente
+      description: |
+        Cadastra um novo cliente (Pessoa Física com CPF de 11 dígitos ou Pessoa Jurídica com CNPJ de 14 dígitos).
+        Valida a unicidade cadastral do documento e a conformidade do endereço de e-mail.
+        Retorna o recurso completo criado com o cabeçalho `Location` e links de navegação HAL.
       operationId: createCustomer
       requestBody:
         required: true
@@ -146,40 +307,200 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/CreateCustomerRequest'
+            examples:
+              individualCustomer:
+                summary: Pessoa Física (CPF)
+                description: Cadastro de cliente pessoa física com CPF de 11 dígitos numéricos.
+                value:
+                  document: '52998224725'
+                  name: 'Carlos Silva'
+                  email: 'carlos.silva@example.com'
+              corporateCustomer:
+                summary: Pessoa Jurídica (CNPJ)
+                description: Cadastro de cliente corporativo ou frotista com CNPJ de 14 dígitos numéricos.
+                value:
+                  document: '12345678000195'
+                  name: 'Transportadora Silva & Filhos Ltda'
+                  email: 'contato@transportadorasilva.com.br'
       responses:
         '201':
-          description: Customer registered successfully
+          description: Cliente cadastrado com sucesso
+          headers:
+            Location:
+              description: URI canônica do recurso criado
+              schema:
+                type: string
+                example: '/api/v1/customers/3fa85f64-5717-4562-b3fc-2c963f66afa6'
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/CustomerResponse'
+                $ref: '#/components/schemas/CustomerDetailedResponse'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
         '422':
           $ref: '#/components/responses/UnprocessableEntity'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
 
-  /api/v1/customers/{document}:
     get:
       tags:
         - Customer
-      summary: Get Customer by Document (CPF or CNPJ)
-      operationId: getCustomerByDocument
+      summary: Listar ou buscar Clientes com filtros opcionais e paginação
+      description: |
+        Retorna uma lista paginada de clientes em formato resumido (`PagedCustomerResponse`).
+        Permite filtragem exata por CPF ou CNPJ, intervalo de datas de cadastro e paginação com
+        múltiplos critérios de ordenação dinâmicos no padrão Spring Data (`sort=name,asc`).
+      operationId: listCustomers
       parameters:
         - name: document
-          in: path
-          required: true
+          in: query
+          required: false
+          description: Documento (CPF ou CNPJ) do cliente
           schema:
             type: string
+            pattern: '^\d{11}$|^\d{14}$'
+            minLength: 11
+            maxLength: 14
           example: '52998224725'
+        - $ref: '#/components/parameters/CreatedFromQueryParam'
+        - $ref: '#/components/parameters/CreatedToQueryParam'
+        - $ref: '#/components/parameters/PageQueryParam'
+        - $ref: '#/components/parameters/SizeQueryParam'
+        - $ref: '#/components/parameters/SortQueryParam'
       responses:
         '200':
-          description: Customer details found
+          description: Lista paginada de clientes
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/CustomerResponse'
+                $ref: '#/components/schemas/PagedCustomerResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/v1/customers/{id}:
+    get:
+      tags:
+        - Customer
+      summary: Consultar Cliente por identificador único (UUID)
+      description: |
+        Recupera os detalhes cadastrais completos de um cliente específico (`CustomerDetailedResponse`),
+        incluindo veículos vinculados embutidos de forma leve (`CustomerVehicleItemResponse`) e links HAL.
+      operationId: getCustomerById
+      parameters:
+        - $ref: '#/components/parameters/IdPathParam'
+      responses:
+        '200':
+          description: Detalhes do cliente localizados com sucesso
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CustomerDetailedResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    patch:
+      tags:
+        - Customer
+      summary: Atualizar dados cadastrais do Cliente parcialmente
+      description: |
+        Atualiza campos específicos do cadastro do cliente (como nome completo, razão social ou e-mail de contato)
+        sem a necessidade de reenviar o payload completo. Mantém a integridade do documento identificador.
+      operationId: updateCustomer
+      parameters:
+        - $ref: '#/components/parameters/IdPathParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchCustomerRequest'
+            examples:
+              updateEmailOnly:
+                summary: Atualização apenas de e-mail de contato
+                description: Atualização pontual do endereço de correio eletrônico do cliente.
+                value:
+                  email: 'carlos.silva.novo@example.com'
+              updateNameOnly:
+                summary: Atualização apenas do nome / razão social
+                description: Correção cadastral do nome completo ou denominação social.
+                value:
+                  name: 'Carlos Eduardo da Silva'
+              updateFullContact:
+                summary: Atualização cadastral conjunta (nome e e-mail)
+                description: Alteração simultânea do nome e e-mail de contato do cliente.
+                value:
+                  name: 'Carlos Eduardo da Silva'
+                  email: 'carlos.silva.novo@example.com'
+      responses:
+        '200':
+          description: Dados do cliente atualizados com sucesso
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CustomerDetailedResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    delete:
+      tags:
+        - Customer
+      summary: Excluir Cliente por identificador único (UUID)
+      description: |
+        Remove o cadastro do cliente pelo identificador UUID.
+        **Regras de Integridade Referencial**: A exclusão é bloqueada caso o cliente possua Ordens de Serviço
+        ativas ou em aberto na oficina, retornando `409 Conflict` ou `422 Unprocessable Entity` em conformidade com a RFC 7807.
+      operationId: deleteCustomerById
+      parameters:
+        - $ref: '#/components/parameters/IdPathParam'
+      responses:
+        '204':
+          description: Cliente removido com sucesso
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
 
   # =========================================================================
   # Vehicle Endpoints
@@ -188,7 +509,11 @@ paths:
     post:
       tags:
         - Vehicle
-      summary: Register a new Vehicle linked to a Customer
+      summary: Cadastrar um novo Veículo vinculado a um Cliente
+      description: |
+        Registra um novo veículo associado a um cliente proprietário previamente cadastrado na base.
+        Valida o formato da placa (padrão Mercosul ou cinza tradicional de 7 caracteres)
+        e a existência do cliente via documento (CPF/CNPJ). Retorna o recurso criado e links HAL.
       operationId: createVehicle
       requestBody:
         required: true
@@ -196,40 +521,214 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/CreateVehicleRequest'
+            examples:
+              mercosulPlate:
+                summary: Placa Padrão Mercosul
+                description: Cadastro de veículo com placa no padrão Mercosul (BRA2E19).
+                value:
+                  licensePlate: 'BRA2E19'
+                  customerDocument: '52998224725'
+                  make: 'Toyota'
+                  model: 'Corolla Altis Hybrid'
+                  manufactureYear: 2023
+              traditionalPlate:
+                summary: Placa Padrão Tradicional
+                description: Cadastro de veículo com placa no padrão cinza tradicional (ABC-1234).
+                value:
+                  licensePlate: 'ABC-1234'
+                  customerDocument: '12345678000195'
+                  make: 'Volkswagen'
+                  model: 'Delivery 9.170'
+                  manufactureYear: 2021
       responses:
         '201':
-          description: Vehicle registered successfully
+          description: Veículo cadastrado com sucesso
+          headers:
+            Location:
+              description: URI canônica do recurso criado
+              schema:
+                type: string
+                example: '/api/v1/vehicles/3fa85f64-5717-4562-b3fc-2c963f66afa6'
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/VehicleResponse'
+                $ref: '#/components/schemas/VehicleDetailedResponse'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
         '422':
           $ref: '#/components/responses/UnprocessableEntity'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
 
-  /api/v1/vehicles/{licensePlate}:
     get:
       tags:
         - Vehicle
-      summary: Get Vehicle by License Plate
-      operationId: getVehicleByLicensePlate
+      summary: Listar ou buscar Veículos com filtros opcionais e paginação
+      description: |
+        Consulta veículos cadastrados com suporte a paginação e filtros combinados por placa (busca exata)
+        e documento (CPF/CNPJ) do cliente proprietário. Retorna projeções resumidas com links de navegação HAL.
+      operationId: listVehicles
       parameters:
         - name: licensePlate
-          in: path
-          required: true
+          in: query
+          required: false
+          description: Placa do veículo (padrão Mercosul ou antigo)
           schema:
             type: string
+            pattern: '^[A-Z]{3}[0-9][A-Z0-9][0-9]{2}$|^[A-Z]{3}-?[0-9]{4}$'
+            maxLength: 10
           example: 'BRA2E19'
+        - name: customerDocument
+          in: query
+          required: false
+          description: Documento (CPF ou CNPJ) do cliente proprietário para filtragem
+          schema:
+            type: string
+            pattern: '^\d{11}$|^\d{14}$'
+            minLength: 11
+            maxLength: 14
+          example: '52998224725'
+        - $ref: '#/components/parameters/CreatedFromQueryParam'
+        - $ref: '#/components/parameters/CreatedToQueryParam'
+        - $ref: '#/components/parameters/PageQueryParam'
+        - $ref: '#/components/parameters/SizeQueryParam'
+        - $ref: '#/components/parameters/SortQueryParam'
       responses:
         '200':
-          description: Vehicle details found
+          description: Lista paginada de veículos
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/VehicleResponse'
+                $ref: '#/components/schemas/PagedVehicleResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/v1/vehicles/{id}:
+    get:
+      tags:
+        - Vehicle
+      summary: Consultar Veículo por identificador único (UUID)
+      description: |
+        Retorna a representação completa dos dados cadastrais do veículo (`VehicleDetailedResponse`),
+        incluindo resumo do cliente proprietário vinculado (`VehicleCustomerItemResponse`) e links HAL.
+      operationId: getVehicleById
+      parameters:
+        - $ref: '#/components/parameters/IdPathParam'
+      responses:
+        '200':
+          description: Detalhes do veículo localizados com sucesso
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VehicleDetailedResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    patch:
+      tags:
+        - Vehicle
+      summary: Atualizar dados cadastrais do Veículo parcialmente
+      description: |
+        Atualiza dados parciais do veículo (marca, modelo ou ano de fabricação/modelo) sem afetar
+        o identificador de placa ou o vínculo de propriedade original.
+      operationId: updateVehicle
+      parameters:
+        - $ref: '#/components/parameters/IdPathParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchVehicleRequest'
+            examples:
+              updateModelOnly:
+                summary: Atualização apenas de modelo / versão
+                description: Ajuste na versão ou nomenclatura do modelo do veículo.
+                value:
+                  model: 'Corolla Altis Premium Hybrid'
+              updateYearOnly:
+                summary: Atualização apenas do ano de fabricação e modelo
+                description: Correção do ano de fabricação e ano do modelo do veículo.
+                value:
+                  manufactureYear: 2024
+                  year: 2024
+              updateMakeAndModel:
+                summary: Atualização completa de marca e modelo
+                description: Retificação conjunta da marca, modelo e ano do veículo.
+                value:
+                  make: 'Toyota'
+                  model: 'Corolla Cross XRE'
+                  manufactureYear: 2024
+      responses:
+        '200':
+          description: Dados do veículo atualizados com sucesso
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VehicleDetailedResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    delete:
+      tags:
+        - Vehicle
+      summary: Excluir Veículo por identificador único (UUID)
+      description: |
+        Remove o cadastro do veículo da base de dados.
+        **Regras de Integridade Referencial**: A exclusão é rejeitada se o veículo estiver associado a
+        Ordens de Serviço abertas ou em andamento, retornando `409 Conflict` ou `422 Unprocessable Entity`.
+      operationId: deleteVehicleById
+      parameters:
+        - $ref: '#/components/parameters/IdPathParam'
+      responses:
+        '204':
+          description: Veículo removido com sucesso
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
 
   # =========================================================================
   # Service Catalog Endpoints
@@ -238,7 +737,11 @@ paths:
     post:
       tags:
         - ServiceCatalog
-      summary: Register a new garage service in the catalog
+      summary: Cadastrar um novo serviço padronizado no catálogo
+      description: |
+        Adiciona uma nova atividade padronizada de mão de obra ao catálogo de serviços da oficina.
+        Exige código padronizado único (ex: `SRV-OIL-01`), nomenclatura descritiva e preço base de mão de obra (BigDecimal).
+        Retorna o serviço criado com cabeçalho `Location` e links de autodescoberta HAL.
       operationId: createService
       requestBody:
         required: true
@@ -246,108 +749,235 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/CreateServiceCatalogRequest'
+            examples:
+              preventiveQuickService:
+                summary: 'Serviço Preventivo e Rápido (Troca de Óleo)'
+                description: 'Cadastro de serviço recorrente de rotina e baixa complexidade.'
+                value:
+                  code: 'SRV-OIL-01'
+                  name: 'Troca de Óleo e Filtro'
+                  description: 'Substituição completa do lubrificante de motor e elemento filtrante'
+                  price: 150.00
+              correctiveComplexService:
+                summary: 'Serviço Corretivo Complexo (Kit de Embreagem)'
+                description: 'Cadastro de manutenção mecânica pesada com desmontagem e regulagem.'
+                value:
+                  code: 'SRV-CLU-02'
+                  name: 'Substituição do Kit de Embreagem'
+                  description: 'Substituição de platô, disco, colar de desengate e alinhamento'
+                  price: 680.00
       responses:
         '201':
-          description: Service catalog item created
+          description: Serviço cadastrado no catálogo com sucesso
+          headers:
+            Location:
+              description: URI canônica do recurso criado
+              schema:
+                type: string
+                example: '/api/v1/services/3fa85f64-5717-4562-b3fc-2c963f66afa6'
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ServiceCatalogResponse'
+                $ref: '#/components/schemas/ServiceCatalogDetailedResponse'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
         '422':
           $ref: '#/components/responses/UnprocessableEntity'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
 
     get:
       tags:
         - ServiceCatalog
-      summary: List all service catalog items
+      summary: Listar todos os serviços do catálogo com filtro por código e paginação
+      description: |
+        Recupera o catálogo de serviços em lista paginada (`PagedServiceCatalogResponse`).
+        Permite busca exata por código de serviço, paginação e ordenação dinâmica com links de navegação HAL.
       operationId: listServices
       parameters:
-        - name: search
+        - name: code
           in: query
           required: false
+          description: Código padronizado do serviço para filtragem exata
           schema:
             type: string
+          example: 'SRV-OIL-01'
+        - $ref: '#/components/parameters/CreatedFromQueryParam'
+        - $ref: '#/components/parameters/CreatedToQueryParam'
+        - $ref: '#/components/parameters/PageQueryParam'
+        - $ref: '#/components/parameters/SizeQueryParam'
+        - $ref: '#/components/parameters/SortQueryParam'
       responses:
         '200':
-          description: List of service catalog items
+          description: Lista paginada de serviços do catálogo recuperada com sucesso
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/ServiceCatalogResponse'
+                $ref: '#/components/schemas/PagedServiceCatalogResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/v1/services/metrics:
+    get:
+      tags:
+        - ServiceCatalog
+      summary: Apurar e consultar métricas de tempo médio de execução dos serviços do catálogo
+      description: |
+        Calcula e consolida indicadores de desempenho operacional da oficina, apurando a média real de duração
+        (em minutos) com base nas Ordens de Serviço finalizadas no histórico. Permite filtro por serviço específico.
+      operationId: getServiceMetrics
+      parameters:
+        - name: serviceCode
+          in: query
+          required: false
+          description: Código padronizado do serviço para filtragem exata
+          schema:
+            type: string
+          example: 'SRV-OIL-01'
+      responses:
+        '200':
+          description: Métricas de tempo médio de execução dos serviços recuperadas com sucesso
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ServiceMetricsResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
 
   /api/v1/services/{id}:
     get:
       tags:
         - ServiceCatalog
-      summary: Get service catalog item by ID
+      summary: Consultar serviço do catálogo por ID
+      description: |
+        Recupera as especificações completas de um item do catálogo de serviços (`ServiceCatalogDetailedResponse`),
+        incluindo preço base de mão de obra, tempo médio real apurado em ordens anteriores e links HAL.
       operationId: getServiceById
       parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
+        - $ref: '#/components/parameters/IdPathParam'
       responses:
         '200':
-          description: Service catalog details
+          description: Detalhes do serviço localizados com sucesso
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ServiceCatalogResponse'
+                $ref: '#/components/schemas/ServiceCatalogDetailedResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
 
-    delete:
-      tags:
-        - ServiceCatalog
-      summary: Delete service catalog item
-      operationId: deleteService
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-      responses:
-        '204':
-          description: Service deleted successfully
-        '404':
-          $ref: '#/components/responses/NotFound'
-
-  /api/v1/services/{id}/price:
     patch:
       tags:
         - ServiceCatalog
-      summary: Update labor price of a service
-      operationId: updateServicePrice
+      summary: Atualizar dados cadastrais ou preço de um serviço no catálogo
+      description: |
+        Atualiza pontualmente parâmetros do serviço (valor de mão de obra, tempo estimado de execução ou escopo
+        técnico das atividades). Preserva os valores históricos praticados em Ordens de Serviço já abertas.
+      operationId: updateService
       parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
+        - $ref: '#/components/parameters/IdPathParam'
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/UpdateServiceCatalogPriceRequest'
+              $ref: '#/components/schemas/PatchServiceCatalogRequest'
+            examples:
+              priceAdjustmentOnly:
+                summary: 'Reajuste apenas de preço da mão de obra'
+                description: 'Atualização monetária do valor da mão de obra do serviço.'
+                value:
+                  price: 180.00
+              timeAndDescriptionUpdate:
+                summary: 'Atualização de tempo estimado e escopo'
+                description: 'Ajuste no tempo padrão de execução e na descrição das atividades.'
+                value:
+                  name: 'Troca de Óleo e Filtro com Higienização'
+                  description: 'Substituição de óleo, troca de filtro e higienização do sistema'
+                  estimatedMinutes: 60
+              fullServiceUpdate:
+                summary: 'Atualização cadastral completa do serviço'
+                description: 'Revisão integral de nome, descrição, preço e tempo estimado.'
+                value:
+                  name: 'Troca de Óleo e Filtro de Alta Performance'
+                  description: 'Substituição com óleo sintético 5W30 e filtro de alta vazão'
+                  price: 180.00
+                  estimatedMinutes: 60
       responses:
         '200':
-          description: Service price updated
+          description: Serviço do catálogo atualizado com sucesso
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ServiceCatalogResponse'
+                $ref: '#/components/schemas/ServiceCatalogDetailedResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    delete:
+      tags:
+        - ServiceCatalog
+      summary: Remover item do catálogo de serviços
+      description: |
+        Exclui um serviço do catálogo da oficina.
+        **Regras de Integridade Referencial**: A exclusão é impedida caso o serviço esteja alocado em Ordens
+        de Serviço ativas ou em andamento, retornando `409 Conflict` ou `422 Unprocessable Entity`.
+      operationId: deleteServiceById
+      parameters:
+        - $ref: '#/components/parameters/IdPathParam'
+      responses:
+        '204':
+          description: Serviço removido com sucesso
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
 
   # =========================================================================
   # Material Catalog Endpoints
@@ -356,7 +986,11 @@ paths:
     post:
       tags:
         - Material
-      summary: Register a new spare part or material in the catalog
+      summary: Cadastrar uma nova peça ou material no catálogo
+      description: |
+        Adiciona uma nova peça de reposição física ou insumo consumível ao catálogo de materiais da oficina.
+        Exige SKU único (ex: `PART-BRK-01`), custo de aquisição, preço de venda (BigDecimal), estoque inicial
+        e nível mínimo de segurança. Retorna o recurso criado com cabeçalho `Location` e links HAL.
       operationId: createMaterial
       requestBody:
         required: true
@@ -364,116 +998,303 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/CreateMaterialRequest'
+            examples:
+              discretePartItem:
+                summary: 'Peça de Reposição Unitária (Pastilha de Freio)'
+                description: 'Cadastro de peça física sobressalente com controle unitário e estoque de segurança.'
+                value:
+                  sku: 'PART-BRK-01'
+                  name: 'Pastilha de Freio Dianteira'
+                  description: 'Jogo de pastilhas cerâmicas para eixo dianteiro com sensor de desgaste'
+                  unitCost: 80.00
+                  unitPrice: 140.00
+                  initialStock: 20
+                  minStock: 5
+              fluidConsumableItem:
+                summary: 'Insumo Químico / Lubrificante (Óleo Sintético 5W30)'
+                description: 'Cadastro de insumo líquido ou fluido lubrificante para manutenções preventivas.'
+                value:
+                  sku: 'LUB-SYN-5W30'
+                  name: 'Óleo Motor Sintético 5W30 (Litro)'
+                  description: 'Lubrificante 100% sintético de alta performance API SP e ILSAC GF-6'
+                  unitCost: 32.50
+                  unitPrice: 65.00
+                  initialStock: 100
+                  minStock: 25
       responses:
         '201':
-          description: Material created successfully
+          description: Material cadastrado com sucesso
+          headers:
+            Location:
+              description: URI canônica do recurso criado
+              schema:
+                type: string
+                example: '/api/v1/materials/3fa85f64-5717-4562-b3fc-2c963f66afa6'
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/MaterialResponse'
+                $ref: '#/components/schemas/MaterialDetailedResponse'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
         '422':
           $ref: '#/components/responses/UnprocessableEntity'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
 
     get:
       tags:
         - Material
-      summary: List all materials with optional search
+      summary: Listar todas as peças e materiais com filtro por SKU e paginação
+      description: |
+        Consulta o inventário de materiais e catálogo de peças em formato paginado (`PagedMaterialResponse`).
+        Permite filtro por SKU exato, intervalo temporal de cadastro e ordenação dinâmica com links de paginação HAL.
       operationId: listMaterials
       parameters:
-        - name: search
+        - name: sku
           in: query
           required: false
+          description: SKU único da peça/material para filtragem exata
           schema:
             type: string
+          example: 'PART-BRK-01'
+        - $ref: '#/components/parameters/CreatedFromQueryParam'
+        - $ref: '#/components/parameters/CreatedToQueryParam'
+        - $ref: '#/components/parameters/PageQueryParam'
+        - $ref: '#/components/parameters/SizeQueryParam'
+        - $ref: '#/components/parameters/SortQueryParam'
       responses:
         '200':
-          description: List of materials
+          description: Lista paginada de materiais recuperada com sucesso
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/MaterialResponse'
+                $ref: '#/components/schemas/PagedMaterialResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
 
   /api/v1/materials/{id}:
     get:
       tags:
         - Material
-      summary: Get material details by ID
+      summary: Consultar detalhes de um material por ID
+      description: |
+        Recupera as especificações detalhadas da peça ou insumo (`MaterialDetailedResponse`), incluindo posição
+        atual de estoque físico (`stockQuantity`), nível de segurança (`minStock`), precificação e links HAL.
       operationId: getMaterialById
       parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
+        - $ref: '#/components/parameters/IdPathParam'
       responses:
         '200':
-          description: Material details
+          description: Detalhes do material localizados com sucesso
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/MaterialResponse'
+                $ref: '#/components/schemas/MaterialDetailedResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
 
-    delete:
-      tags:
-        - Material
-      summary: Delete material
-      operationId: deleteMaterial
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-      responses:
-        '204':
-          description: Material deleted successfully
-        '404':
-          $ref: '#/components/responses/NotFound'
-
-  /api/v1/materials/{id}/price:
     patch:
       tags:
         - Material
-      summary: Update material unit price and cost
-      operationId: updateMaterialPrice
+      summary: Atualizar dados cadastrais, preços de venda ou custo de um material
+      description: |
+        Atualiza pontualmente a precificação (custo ou preço de venda), estoque mínimo de segurança ou descrição
+        da peça. Preserva o saldo atual de estoque físico e o histórico de requisições já processadas.
+      operationId: updateMaterial
       parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
+        - $ref: '#/components/parameters/IdPathParam'
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/UpdateMaterialPriceRequest'
+              $ref: '#/components/schemas/PatchMaterialRequest'
+            examples:
+              priceAdjustmentOnly:
+                summary: 'Reajuste de custos e preço de venda'
+                description: 'Atualização monetária de custo unitário e preço de tabela do material.'
+                value:
+                  unitCost: 85.00
+                  unitPrice: 155.00
+              stockThresholdUpdate:
+                summary: 'Ajuste do estoque mínimo de segurança'
+                description: 'Alteração da margem de segurança e ponto de ressuprimento no estoque.'
+                value:
+                  minStock: 10
+              fullMaterialUpdate:
+                summary: 'Atualização cadastral e precificação completa'
+                description: 'Revisão conjunta de descrição comercial, custos, preço de venda e margens.'
+                value:
+                  name: 'Pastilha de Freio Cerâmica Premium'
+                  description: 'Pastilhas cerâmicas para alto rendimento e frenagem estável'
+                  unitCost: 85.00
+                  unitPrice: 155.00
+                  minStock: 10
       responses:
         '200':
-          description: Material price updated
+          description: Material atualizado com sucesso
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/MaterialResponse'
+                $ref: '#/components/schemas/MaterialDetailedResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    delete:
+      tags:
+        - Material
+      summary: Remover material do catálogo
+      description: |
+        Exclui um material ou peça do catálogo do almoxarifado.
+        **Regras de Integridade Referencial**: A exclusão é rejeitada caso o material possua saldo positivo em estoque
+        físico ou esteja alocado em Ordens de Serviço ativas, retornando `409 Conflict` ou `422 Unprocessable Entity`.
+      operationId: deleteMaterialById
+      parameters:
+        - $ref: '#/components/parameters/IdPathParam'
+      responses:
+        '204':
+          description: Material removido com sucesso
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
 
 components:
+  parameters:
+    PageQueryParam:
+      name: page
+      in: query
+      required: false
+      description: |
+        Índice da página para navegação na coleção (base zero, padrão `0`).
+      schema:
+        type: integer
+        default: 0
+        minimum: 0
+      example: 0
+
+    SizeQueryParam:
+      name: size
+      in: query
+      required: false
+      description: |
+        Quantidade máxima de registros retornados por página (mínimo `1`, máximo `100`, padrão `20`).
+      schema:
+        type: integer
+        default: 20
+        minimum: 1
+        maximum: 100
+      example: 20
+
+    SortQueryParam:
+      name: sort
+      in: query
+      required: false
+      description: |
+        Critério de ordenação no padrão Spring Data (ex: `createdAt,desc` ou `name,asc`).
+        Permite múltiplos parâmetros repetidos para ordenação composta (`explode: true`).
+      schema:
+        type: array
+        items:
+          type: string
+      style: form
+      explode: true
+      example:
+        - 'createdAt,desc'
+
+    CreatedFromQueryParam:
+      name: createdFrom
+      in: query
+      required: false
+      description: |
+        Data e hora inicial para filtragem no padrão **ISO 8601 UTC** (`YYYY-MM-DDThh:mm:ssZ`).
+      schema:
+        type: string
+        format: date-time
+      example: '2026-10-01T00:00:00Z'
+
+    CreatedToQueryParam:
+      name: createdTo
+      in: query
+      required: false
+      description: |
+        Data e hora final para filtragem no padrão **ISO 8601 UTC** (`YYYY-MM-DDThh:mm:ssZ`).
+      schema:
+        type: string
+        format: date-time
+      example: '2026-10-07T23:59:59Z'
+
+    IdPathParam:
+      name: id
+      in: path
+      required: true
+      description: |
+        Identificador único universal do recurso no padrão **UUID v4** (RFC 4122).
+      schema:
+        type: string
+        format: uuid
+      example: '3fa85f64-5717-4562-b3fc-2c963f66afa6'
+
+    CorrelationIdHeaderParam:
+      name: X-Correlation-Id
+      in: header
+      required: false
+      description: |
+        Identificador único de correlação transacional distribuída (**UUID v4**) para rastreabilidade ponta a ponta.
+      schema:
+        type: string
+        format: uuid
+      example: 'c3d8e5f2-a1b4-47d9-9e8c-7f6a5b4c3d2e'
+
   schemas:
     # -----------------------------------------------------------------------
     # Work Order Schemas
     # -----------------------------------------------------------------------
     CreateWorkOrderRequest:
       type: object
+      description: Requisição para abertura de Ordem de Serviço na oficina
       required:
         - customerDocument
         - licensePlate
@@ -481,56 +1302,553 @@ components:
       properties:
         customerDocument:
           type: string
+          pattern: '^\d{11}$|^\d{14}$'
+          minLength: 11
+          maxLength: 14
           example: '52998224725'
+          description: |
+            Documento de identificação do cliente solicitante (**CPF** com 11 dígitos ou **CNPJ** com 14 dígitos, apenas numéricos).
         licensePlate:
           type: string
+          pattern: '^[A-Z]{3}[0-9][A-Z0-9][0-9]{2}$|^[A-Z]{3}-?[0-9]{4}$'
+          maxLength: 10
           example: 'BRA2E19'
+          description: |
+            Placa do veículo vinculado à ordem (padrão Mercosul `BRA2E19` ou cinza tradicional `ABC-1234`).
         description:
           type: string
-          example: 'Regular maintenance and brake inspection'
+          minLength: 5
+          maxLength: 500
+          example: 'Manutenção periódica e revisão dos freios'
+          description: |
+            Relato detalhado do problema mecânico, sintomas ou serviços solicitados pelo cliente.
+        services:
+          type: array
+          description: |
+            Lista opcional de serviços pré-alocados do catálogo a serem incluídos na abertura.
+          items:
+            $ref: '#/components/schemas/WorkOrderServiceItemRequest'
+        materials:
+          type: array
+          description: |
+            Lista opcional de peças e insumos pré-alocados do almoxarifado a serem incluídos na abertura.
+          items:
+            $ref: '#/components/schemas/WorkOrderMaterialItemRequest'
 
-    UpdateStatusRequest:
+    WorkOrderServiceItemRequest:
       type: object
+      description: Referência a serviço pré-cadastrado no catálogo
+      required:
+        - serviceId
+        - quantity
+      properties:
+        serviceId:
+          type: string
+          format: uuid
+          example: '7c7da75e-1ced-4520-9362-e328bba8b4ae'
+          description: |
+            Identificador único universal do serviço no catálogo (`UUID v4`).
+        quantity:
+          type: integer
+          minimum: 1
+          default: 1
+          example: 1
+          description: |
+            Quantidade inteira de execuções do serviço a serem faturadas (mínimo `1`).
+
+    WorkOrderMaterialItemRequest:
+      type: object
+      description: Referência a peça ou material pré-cadastrado no catálogo
+      required:
+        - materialId
+        - quantity
+      properties:
+        materialId:
+          type: string
+          format: uuid
+          example: '3fa85f64-5717-4562-b3fc-2c963f66afa6'
+          description: |
+            Identificador único universal da peça/material no catálogo (`UUID v4`).
+        quantity:
+          type: integer
+          minimum: 1
+          default: 1
+          example: 2
+          description: |
+            Quantidade inteira de unidades/frações do material a serem alocadas (mínimo `1`).
+
+    WorkOrderStatus:
+      type: string
+      enum:
+        - RECEIVED
+        - DIAGNOSING
+        - WAITING_APPROVAL
+        - APPROVED
+        - EXECUTING
+        - COMPLETED
+        - DELIVERED
+        - CANCELED
+        - PAYMENT_REJECTED
+      example: 'APPROVED'
+      description: |
+        Status operacional do ciclo de vida da Ordem de Serviço na oficina.
+
+        **Matriz de Transições e Regras de Negócio**:
+        - `RECEIVED`: Ordem aberta na recepção, aguardando triagem mecânica inicial. Próximos válidos: `DIAGNOSING` ou `CANCELED`.
+        - `DIAGNOSING`: Em análise técnica pelo mecânico e elaboração de orçamento. Próximos válidos: `WAITING_APPROVAL` ou `CANCELED`.
+        - `WAITING_APPROVAL`: Orçamento emitido, aguardando aprovação do cliente. Próximos válidos: `APPROVED`, `PAYMENT_REJECTED` ou `CANCELED`.
+        - `APPROVED`: Orçamento aprovado e pagamento pré-autorizado. Próximo válido: `EXECUTING`.
+        - `EXECUTING`: Manutenção física em andamento com alocação de peças. Próximo válido: `COMPLETED`.
+        - `COMPLETED`: Manutenções finalizadas e testes de qualidade aprovados. Próximo válido: `DELIVERED`.
+        - `DELIVERED`: Veículo liberado e entregue ao proprietário (Estado Terminal).
+        - `CANCELED`: Ordem cancelada por desistência ou inviabilidade técnica (Estado Terminal).
+        - `PAYMENT_REJECTED`: Pagamento não aprovado ou recusado pela operadora. Próximos válidos: `WAITING_APPROVAL` ou `CANCELED`.
+
+    UpdateWorkOrderStatusRequest:
+      type: object
+      description: Requisição para atualização de status da Ordem de Serviço
       required:
         - status
       properties:
         status:
-          type: string
-          enum: [RECEIVED, DIAGNOSING, WAITING_APPROVAL, APPROVED, EXECUTING, COMPLETED, CANCELED]
-          example: 'APPROVED'
+          description: |
+            Novo status operacional a ser atribuído à Ordem de Serviço conforme a máquina de estados.
+          $ref: '#/components/schemas/WorkOrderStatus'
         reason:
           type: string
-          example: 'Customer approved the budget'
+          example: 'Cliente aprovou o orçamento'
+          description: |
+            Justificativa operacional da alteração de status ou motivo de cancelamento/rejeição.
 
-    WorkOrderResponse:
+    WorkOrderServiceItemResponse:
       type: object
+      description: Item de mão de obra/serviço incluído na Ordem de Serviço
       properties:
         id:
           type: string
           format: uuid
-        customerDocument:
+          example: '8b9e6973-c823-4416-8f3b-01a5fa6c1071'
+          description: |
+            Identificador único universal do item na ordem (`UUID v4`).
+        serviceId:
           type: string
-        licensePlate:
+          format: uuid
+          example: '7c7da75e-1ced-4520-9362-e328bba8b4ae'
+          description: |
+            Identificador de referência do serviço no catálogo original (`UUID v4`).
+        itemName:
           type: string
-        status:
+          example: 'Troca de Óleo e Filtro'
+          description: |
+            Snapshot do nome do serviço no momento da inclusão na ordem.
+        itemCode:
           type: string
-        description:
-          type: string
-        totalAmount:
+          example: 'SRV-OIL-01'
+          description: |
+            Snapshot do código padronizado do serviço no catálogo (ex: `SRV-OIL-01`).
+        unitPrice:
           type: number
-          format: double
+          minimum: 0.0
+          example: 150.00
+          description: |
+            Preço unitário aplicado da mão de obra (**Monetário BigDecimal**, mínimo `0.00`).
+        quantity:
+          type: integer
+          example: 1
+          description: |
+            Quantidade de execuções do serviço aplicadas na ordem.
+        subtotal:
+          type: number
+          minimum: 0.0
+          example: 150.00
+          description: |
+            Valor subtotal calculado para este item de serviço (**Monetário BigDecimal**).
+        _links:
+          type: object
+          description: |
+            Links hipermídia para autodescoberta e navegação conforme padrão HAL (RFC 8288).
+          properties:
+            service:
+              description: |
+                Link de acesso direto ao recurso de catálogo do serviço associado.
+              $ref: '#/components/schemas/Link'
         createdAt:
           type: string
           format: date-time
+          example: '2026-10-08T10:30:00Z'
+          description: |
+            Data e hora de inclusão do serviço na ordem no padrão **ISO 8601 UTC**.
+
+    WorkOrderMaterialItemResponse:
+      type: object
+      description: Item de peça/material incluído na Ordem de Serviço
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: '4a1e9447-e6f1-460d-9b0d-b4b0e8c7c103'
+          description: |
+            Identificador único universal do item de material na ordem (`UUID v4`).
+        materialId:
+          type: string
+          format: uuid
+          example: '3fa85f64-5717-4562-b3fc-2c963f66afa6'
+          description: |
+            Identificador de referência da peça no catálogo de materiais (`UUID v4`).
+        itemName:
+          type: string
+          example: 'Pastilha de Freio Dianteira'
+          description: |
+            Snapshot da nomenclatura da peça no momento da requisição na ordem.
+        itemSku:
+          type: string
+          example: 'PART-BRK-01'
+          description: |
+            Snapshot do código SKU da peça no catálogo (ex: `PART-BRK-01`).
+        unitPrice:
+          type: number
+          minimum: 0.0
+          example: 85.00
+          description: |
+            Preço unitário de venda aplicado (**Monetário BigDecimal**, mínimo `0.00`).
+        quantity:
+          type: integer
+          example: 2
+          description: |
+            Quantidade de unidades físicas do material consumidas na ordem.
+        subtotal:
+          type: number
+          minimum: 0.0
+          example: 170.00
+          description: |
+            Valor subtotal calculado para este material (**Monetário BigDecimal**).
+        _links:
+          type: object
+          description: |
+            Links hipermídia para autodescoberta e navegação conforme padrão HAL (RFC 8288).
+          properties:
+            material:
+              description: |
+                Link de acesso direto ao recurso do material no catálogo.
+              $ref: '#/components/schemas/Link'
+        createdAt:
+          type: string
+          format: date-time
+          example: '2026-10-08T10:30:00Z'
+          description: |
+            Data e hora de inclusão da peça na ordem no padrão **ISO 8601 UTC**.
+
+    WorkOrderStatusHistoryResponse:
+      type: object
+      description: Registro histórico de transição de status da Ordem de Serviço
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: '5d6c7b8a-9e0f-1a2b-3c4d-5e6f7a8b9c0d'
+          description: |
+            Identificador único universal do registro de auditoria (`UUID v4`).
+        fromStatus:
+          description: |
+            Status operacional de origem anterior à transição.
+          $ref: '#/components/schemas/WorkOrderStatus'
+        toStatus:
+          description: |
+            Status operacional de destino resultante da transição.
+          $ref: '#/components/schemas/WorkOrderStatus'
+        reason:
+          type: string
+          example: 'Cliente aprovou o orçamento'
+          description: |
+            Justificativa operacional ou observação registrada para a transição de estado.
+        changedAt:
+          type: string
+          format: date-time
+          example: '2026-10-08T10:30:00Z'
+          description: |
+            Data e hora em que a transição ocorreu no padrão **ISO 8601 UTC**.
+        changedBy:
+          type: string
+          example: 'mechanic-app'
+          description: |
+            Identificador do operador, mecânico ou sistema automatizado que disparou a transição.
+
+    WorkOrderDetailedResponse:
+      type: object
+      description: Dados detalhados e consolidados da Ordem de Serviço (inclui itens e histórico)
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: '8b9e6973-c823-4416-8f3b-01a5fa6c1071'
+          description: |
+            Identificador único universal da Ordem de Serviço (`UUID v4`).
+        customerDocument:
+          type: string
+          example: '52998224725'
+          description: |
+            Documento identificador do cliente proprietário (**CPF** ou **CNPJ**, apenas dígitos).
+        licensePlate:
+          type: string
+          example: 'BRA2E19'
+          description: |
+            Placa do veículo atendido (padrão Mercosul `BRA2E19` ou cinza tradicional `ABC-1234`).
+        status:
+          description: |
+            Status operacional atual da Ordem de Serviço na máquina de estados da oficina.
+          $ref: '#/components/schemas/WorkOrderStatus'
+        description:
+          type: string
+          example: 'Manutenção periódica e revisão dos freios'
+          description: |
+            Descrição detalhada do atendimento, diagnóstico ou solicitação do cliente.
+        totalAmount:
+          type: number
+          minimum: 0.0
+          example: 320.00
+          description: |
+            Valor total consolidado acumulado de serviços e peças (**Monetário BigDecimal**, mínimo `0.00`).
+        services:
+          type: array
+          description: |
+            Lista de itens de serviços de mão de obra alocados na Ordem de Serviço.
+          items:
+            $ref: '#/components/schemas/WorkOrderServiceItemResponse'
+        materials:
+          type: array
+          description: |
+            Lista de itens de peças e materiais alocados na Ordem de Serviço.
+          items:
+            $ref: '#/components/schemas/WorkOrderMaterialItemResponse'
+        _links:
+          type: object
+          description: |
+            Links hipermídia para autodescoberta conforme especificação HAL (RFC 8288).
+          properties:
+            self:
+              description: |
+                Link canônico para consulta direta desta Ordem de Serviço.
+              $ref: '#/components/schemas/Link'
+        statusHistory:
+          type: array
+          description: |
+            Trilha de auditoria cronológica contendo todas as transições de status da ordem.
+          items:
+            $ref: '#/components/schemas/WorkOrderStatusHistoryResponse'
+        createdAt:
+          type: string
+          format: date-time
+          example: '2026-10-08T10:00:00Z'
+          description: |
+            Data e hora de abertura da ordem no padrão **ISO 8601 UTC**.
         updatedAt:
           type: string
           format: date-time
+          example: '2026-10-08T10:30:00Z'
+          description: |
+            Data e hora da última modificação cadastral ou de status no padrão **ISO 8601 UTC**.
+
+    WorkOrderSummaryResponse:
+      type: object
+      description: Resumo plano da Ordem de Serviço para listagens e consultas paginadas
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: '8b9e6973-c823-4416-8f3b-01a5fa6c1071'
+          description: |
+            Identificador único universal da Ordem de Serviço (`UUID v4`).
+        customerDocument:
+          type: string
+          example: '52998224725'
+          description: |
+            Documento identificador do cliente proprietário (**CPF** ou **CNPJ**).
+        licensePlate:
+          type: string
+          example: 'BRA2E19'
+          description: |
+            Placa do veículo associado à ordem.
+        status:
+          description: |
+            Status operacional atual da Ordem de Serviço na máquina de estados.
+          $ref: '#/components/schemas/WorkOrderStatus'
+        totalAmount:
+          type: number
+          minimum: 0.0
+          example: 320.00
+          description: |
+            Valor total acumulado da ordem (**Monetário BigDecimal**, mínimo `0.00`).
+        _links:
+          type: object
+          description: |
+            Links hipermídia de navegação direta conforme especificação HAL (RFC 8288).
+          properties:
+            self:
+              description: |
+                Link de acesso direto ao recurso detalhado da Ordem de Serviço.
+              $ref: '#/components/schemas/Link'
+        createdAt:
+          type: string
+          format: date-time
+          example: '2026-10-08T10:00:00Z'
+          description: |
+            Data e hora de abertura da ordem no padrão **ISO 8601 UTC**.
+
+    # =========================================================================
+    # Hypermedia Link Schema (RFC 8288 / HAL Specification)
+    # Padrão: Richardson Maturity Model Level 3 & RFC 6570 (URI Template)
+    # Decisão de Design: O atributo 'example' adota URI canônica neutra
+    # (/api/v1/resources/{id}) para evitar acoplamento a domínios específicos
+    # em schemas genéricos e reutilizáveis entre múltiplos recursos.
+    # =========================================================================
+    Link:
+      type: object
+      description: Link hipermídia conforme especificação HAL / RFC 8288
+      required:
+        - href
+      properties:
+        href:
+          type: string
+          example: '/api/v1/resources/3fa85f64-5717-4562-b3fc-2c963f66afa6'
+          description: |
+            URI de destino do recurso ou ação hipermídia (RFC 3986).
+        templated:
+          type: boolean
+          example: false
+          description: |
+            Indica se a URI é parametrizada no formato URI Template (RFC 6570).
+
+    PageLinks:
+      type: object
+      description: Conjunto de links hipermídia de paginação conforme padrão HAL / RFC 8288
+      properties:
+        self:
+          description: |
+            Link hipermídia para a própria página atual da coleção (RFC 8288 / HAL).
+          $ref: '#/components/schemas/Link'
+        first:
+          description: |
+            Link hipermídia para a primeira página da coleção (RFC 8288 / HAL).
+          $ref: '#/components/schemas/Link'
+        prev:
+          description: |
+            Link hipermídia para a página anterior, omitido se estiver na primeira (RFC 8288 / HAL).
+          $ref: '#/components/schemas/Link'
+        next:
+          description: |
+            Link hipermídia para a próxima página, omitido se estiver na última (RFC 8288 / HAL).
+          $ref: '#/components/schemas/Link'
+        last:
+          description: |
+            Link hipermídia para a última página da coleção (RFC 8288 / HAL).
+          $ref: '#/components/schemas/Link'
+      example:
+        self:
+          href: '/api/v1/resources?page=1&size=20'
+        first:
+          href: '/api/v1/resources?page=0&size=20'
+        prev:
+          href: '/api/v1/resources?page=0&size=20'
+        next:
+          href: '/api/v1/resources?page=2&size=20'
+        last:
+          href: '/api/v1/resources?page=3&size=20'
+
+    PagedWorkOrderResponse:
+      type: object
+      description: Resposta paginada de Ordens de Serviço
+      properties:
+        content:
+          type: array
+          description: |
+            Coleção contendo as projeções resumidas das Ordens de Serviço (`WorkOrderSummaryResponse`).
+          items:
+            $ref: '#/components/schemas/WorkOrderSummaryResponse'
+        _links:
+          description: |
+            Conjunto de links hipermídia para navegação paginada conforme RFC 8288 / HAL.
+          $ref: '#/components/schemas/PageLinks'
+        page:
+          type: integer
+          example: 0
+          description: |
+            Índice base zero da página atual retornada.
+        size:
+          type: integer
+          example: 20
+          description: |
+            Quantidade máxima de registros retornados por página.
+        totalElements:
+          type: integer
+          format: int64
+          example: 42
+          description: |
+            Quantidade total absoluta de registros encontrados em todas as páginas.
+        totalPages:
+          type: integer
+          example: 3
+          description: |
+            Quantidade total de páginas calculadas disponíveis na consulta.
+
+    ServiceAverageTimeMetricResponse:
+      type: object
+      description: Métrica de tempo médio real apurado para um serviço
+      properties:
+        serviceId:
+          type: string
+          format: uuid
+          example: '7c7da75e-1ced-4520-9362-e328bba8b4ae'
+          description: |
+            Identificador único universal do serviço no catálogo (`UUID v4`).
+        serviceCode:
+          type: string
+          example: 'SRV-OIL-01'
+          description: |
+            Código padronizado do serviço no catálogo (ex: `SRV-OIL-01`).
+        serviceName:
+          type: string
+          example: 'Troca de Óleo e Filtro'
+          description: |
+            Nomenclatura oficial descritiva do serviço.
+        averageMinutes:
+          type: integer
+          format: int64
+          example: 45
+          description: |
+            Média de duração real apurada calculada em minutos.
+        totalCompletedOrders:
+          type: integer
+          format: int64
+          example: 12
+          description: |
+            Quantidade total de ordens concluídas consideradas na média estatística.
+
+    ServiceMetricsResponse:
+      type: object
+      description: Métricas agregadas e consolidadas de serviços do catálogo
+      properties:
+        services:
+          type: array
+          description: |
+            Lista consolidada contendo as métricas de duração média apuradas por tipo de serviço.
+          items:
+            $ref: '#/components/schemas/ServiceAverageTimeMetricResponse'
+        _links:
+          type: object
+          description: |
+            Links hipermídia para autodescoberta conforme padrão HAL (RFC 8288).
+          properties:
+            self:
+              description: |
+                Link canônico para consulta das métricas de serviço.
+              $ref: '#/components/schemas/Link'
 
     # -----------------------------------------------------------------------
     # Customer Schemas
     # -----------------------------------------------------------------------
     CreateCustomerRequest:
       type: object
+      description: Requisição de cadastro de novo cliente
       required:
         - document
         - name
@@ -538,36 +1856,237 @@ components:
       properties:
         document:
           type: string
+          pattern: '^\d{11}$|^\d{14}$'
+          minLength: 11
+          maxLength: 14
           example: '52998224725'
+          description: |
+            Documento oficial do cliente (**CPF** com 11 dígitos ou **CNPJ** com 14 dígitos, apenas numéricos).
         name:
           type: string
+          minLength: 3
+          maxLength: 150
           example: 'Carlos Silva'
+          description: |
+            Nome completo da pessoa física ou razão social da pessoa jurídica (mínimo `3`, máximo `150` caracteres).
         email:
           type: string
           format: email
+          maxLength: 100
           example: 'carlos.silva@example.com'
+          description: |
+            Endereço eletrônico de contato (formato de e-mail RFC 5322 válido, máximo `100` caracteres).
 
-    CustomerResponse:
+    # =========================================================================
+    # Customer Schemas (ADR-0003: DTO Granularity & Symmetry)
+    # Padrões aplicados:
+    # - CustomerDetailedResponse: Payload completo para busca por ID com vínculos
+    # - CustomerSummaryResponse: Projeção plana e leve para coleções paginadas
+    # - CustomerVehicleItemResponse: Item aninhado leve em Customer com _links.self
+    # =========================================================================
+    CustomerDetailedResponse:
       type: object
+      description: Detalhes cadastrais completos do cliente (inclui contatos e auditoria)
       properties:
         id:
           type: string
           format: uuid
+          example: '3fa85f64-5717-4562-b3fc-2c963f66afa6'
+          description: |
+            Identificador único universal do cliente (**UUID v4**).
         name:
           type: string
+          example: 'Carlos Silva'
+          description: |
+            Nome completo ou razão social da empresa.
         email:
           type: string
+          format: email
+          example: 'carlos.silva@example.com'
+          description: |
+            Endereço de e-mail cadastrado.
         document:
           type: string
+          example: '52998224725'
+          description: |
+            Documento oficial de identificação (**CPF** ou **CNPJ**).
         createdAt:
           type: string
           format: date-time
+          example: '2026-10-01T14:20:00Z'
+          description: |
+            Data e hora do cadastro inicial no padrão **ISO 8601 UTC**.
+        updatedAt:
+          type: string
+          format: date-time
+          example: '2026-10-08T09:15:00Z'
+          description: |
+            Data e hora da última atualização cadastral no padrão **ISO 8601 UTC**.
+        vehicles:
+          type: array
+          description: |
+            Lista de veículos cadastrados vinculados ao cliente.
+          items:
+            $ref: '#/components/schemas/CustomerVehicleItemResponse'
+        _links:
+          type: object
+          description: |
+            Links hipermídia para autodescoberta conforme padrão HAL (RFC 8288).
+          properties:
+            self:
+              description: |
+                Link canônico para consulta detalhada do cliente.
+              $ref: '#/components/schemas/Link'
+
+    CustomerVehicleItemResponse:
+      type: object
+      description: Resumo do veículo associado no contexto de um cliente
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: '6c8f9b1e-3a4d-4e5f-b6a7-8c9d0e1f2a3b'
+          description: |
+            Identificador único universal do veículo (**UUID v4**).
+        licensePlate:
+          type: string
+          example: 'BRA2E19'
+          description: |
+            Placa do veículo (padrão Mercosul `BRA2E19` ou tradicional `ABC-1234`).
+        make:
+          type: string
+          example: 'Toyota'
+          description: |
+            Marca ou montadora fabricante do veículo.
+        model:
+          type: string
+          example: 'Corolla'
+          description: |
+            Modelo ou versão comercial do veículo.
+        manufactureYear:
+          type: integer
+          example: 2023
+          description: |
+            Ano de fabricação do veículo.
+        createdAt:
+          type: string
+          format: date-time
+          example: '2026-10-02T11:00:00Z'
+          description: |
+            Data e hora do cadastro do veículo no padrão **ISO 8601 UTC**.
+        _links:
+          type: object
+          description: |
+            Links hipermídia de navegação direta conforme padrão HAL (RFC 8288).
+          properties:
+            self:
+              description: |
+                Link de acesso direto ao recurso completo do veículo.
+              $ref: '#/components/schemas/Link'
+
+    CustomerSummaryResponse:
+      type: object
+      description: Resumo cadastral do cliente para buscas e filtros rápidos
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: '3fa85f64-5717-4562-b3fc-2c963f66afa6'
+          description: |
+            Identificador único universal do cliente (**UUID v4**).
+        name:
+          type: string
+          example: 'Carlos Silva'
+          description: |
+            Nome completo ou razão social da empresa.
+        document:
+          type: string
+          example: '52998224725'
+          description: |
+            Documento de identificação (**CPF** ou **CNPJ**).
+        createdAt:
+          type: string
+          format: date-time
+          example: '2026-10-01T14:20:00Z'
+          description: |
+            Data e hora do cadastro no padrão **ISO 8601 UTC**.
+        vehicles:
+          type: array
+          description: |
+            Lista resumida de veículos vinculados ao cliente.
+          items:
+            $ref: '#/components/schemas/CustomerVehicleItemResponse'
+        _links:
+          type: object
+          description: |
+            Links hipermídia de navegação direta conforme padrão HAL (RFC 8288).
+          properties:
+            self:
+              description: |
+                Link de acesso direto ao recurso completo do cliente.
+              $ref: '#/components/schemas/Link'
+
+    PagedCustomerResponse:
+      type: object
+      description: Resposta paginada de clientes
+      properties:
+        content:
+          type: array
+          description: |
+            Coleção paginada de clientes em projeção resumida (`CustomerSummaryResponse`).
+          items:
+            $ref: '#/components/schemas/CustomerSummaryResponse'
+        _links:
+          description: |
+            Links hipermídia para navegação paginada conforme especificação HAL (RFC 8288).
+          $ref: '#/components/schemas/PageLinks'
+        page:
+          type: integer
+          example: 0
+          description: |
+            Índice base zero da página atual retornada.
+        size:
+          type: integer
+          example: 20
+          description: |
+            Quantidade máxima de registros por página.
+        totalElements:
+          type: integer
+          format: int64
+          example: 42
+          description: |
+            Quantidade total absoluta de clientes encontrados na consulta.
+        totalPages:
+          type: integer
+          example: 3
+          description: |
+            Quantidade total de páginas calculadas disponíveis na consulta.
+
+    PatchCustomerRequest:
+      type: object
+      description: Requisição de atualização parcial dos dados do cliente
+      properties:
+        name:
+          type: string
+          minLength: 3
+          maxLength: 150
+          example: 'Carlos Silva'
+          description: |
+            Nome completo ou razão social atualizado (mínimo `3`, máximo `150` caracteres).
+        email:
+          type: string
+          format: email
+          maxLength: 100
+          example: 'carlos.silva@example.com'
+          description: |
+            Endereço de e-mail atualizado (formato RFC 5322 válido, máximo `100` caracteres).
 
     # -----------------------------------------------------------------------
     # Vehicle Schemas
     # -----------------------------------------------------------------------
     CreateVehicleRequest:
       type: object
+      description: Requisição de cadastro de novo veículo
       required:
         - licensePlate
         - customerDocument
@@ -575,51 +2094,290 @@ components:
       properties:
         licensePlate:
           type: string
+          pattern: '^[A-Z]{3}[0-9][A-Z0-9][0-9]{2}$|^[A-Z]{3}-?[0-9]{4}$'
+          maxLength: 10
           example: 'BRA2E19'
+          description: |
+            Placa identificadora do veículo (**Padrão Mercosul** `AAA0A00` ou **Tradicional** `AAA-0000`, máximo `10` caracteres).
         customerDocument:
           type: string
+          pattern: '^\d{11}$|^\d{14}$'
+          minLength: 11
+          maxLength: 14
           example: '52998224725'
+          description: |
+            Número do documento de identificação fiscal do proprietário (**CPF** com `11` dígitos ou **CNPJ** com `14` dígitos, somente números).
         make:
           type: string
+          minLength: 2
+          maxLength: 100
           example: 'Toyota'
+          description: |
+            Nome da fabricante/montadora do veículo (mínimo `2`, máximo `100` caracteres).
         brand:
           type: string
+          minLength: 2
+          maxLength: 100
           example: 'Toyota'
+          description: |
+            Nome da marca/montadora (alias compatível com `make`, mínimo `2`, máximo `100` caracteres).
         model:
           type: string
+          minLength: 2
+          maxLength: 100
           example: 'Corolla'
+          description: |
+            Modelo comercial do veículo (mínimo `2`, máximo `100` caracteres).
         manufactureYear:
           type: integer
+          minimum: 1900
+          maximum: 2100
           example: 2023
+          description: |
+            Ano em que o veículo foi fisicamente fabricado (entre `1900` e `2100`).
         year:
           type: integer
+          minimum: 1900
+          maximum: 2100
           example: 2023
+          description: |
+            Ano do modelo do veículo (entre `1900` e `2100`).
 
-    VehicleResponse:
+    PatchVehicleRequest:
       type: object
+      description: Requisição de atualização parcial dos dados do veículo
+      properties:
+        make:
+          type: string
+          minLength: 2
+          maxLength: 100
+          example: 'Toyota'
+          description: |
+            Nome atualizado da fabricante/montadora do veículo (mínimo `2`, máximo `100` caracteres).
+        brand:
+          type: string
+          minLength: 2
+          maxLength: 100
+          example: 'Toyota'
+          description: |
+            Nome atualizado da marca/montadora (alias compatível com `make`, mínimo `2`, máximo `100` caracteres).
+        model:
+          type: string
+          minLength: 2
+          maxLength: 100
+          example: 'Corolla'
+          description: |
+            Modelo comercial atualizado do veículo (mínimo `2`, máximo `100` caracteres).
+        manufactureYear:
+          type: integer
+          minimum: 1900
+          maximum: 2100
+          example: 2024
+          description: |
+            Ano atualizado de fabricação do veículo (entre `1900` e `2100`).
+        year:
+          type: integer
+          minimum: 1900
+          maximum: 2100
+          example: 2024
+          description: |
+            Ano atualizado do modelo do veículo (entre `1900` e `2100`).
+
+    # =========================================================================
+    # Vehicle Schemas (ADR-0003: DTO Granularity & Symmetry)
+    # Padrões aplicados:
+    # - VehicleDetailedResponse: Detalhes cadastrais completos com vínculos
+    # - VehicleSummaryResponse: Resumo plano para coleções e filtros rápidos
+    # - VehicleCustomerItemResponse: Item aninhado leve em Vehicle com _links.self
+    # =========================================================================
+    VehicleDetailedResponse:
+      type: object
+      description: Detalhes cadastrais completos do veículo (inclui auditoria e dados complementares)
       properties:
         id:
           type: string
           format: uuid
+          example: '6c8f9b1e-3a4d-4e5f-b6a7-8c9d0e1f2a3b'
+          description: |
+            Identificador único universal do veículo (`UUID v4`).
         customerDocument:
           type: string
+          example: '52998224725'
+          description: |
+            Número do documento (**CPF** / **CNPJ**) do cliente proprietário vinculado.
+        customer:
+          description: |
+            Dados cadastrais resumidos do cliente proprietário vinculado ao veículo.
+          $ref: '#/components/schemas/VehicleCustomerItemResponse'
         licensePlate:
           type: string
+          example: 'BRA2E19'
+          description: |
+            Placa identificadora do veículo (**Padrão Mercosul** ou **Tradicional**).
         make:
           type: string
+          example: 'Toyota'
+          description: |
+            Nome da fabricante/montadora do veículo.
         model:
           type: string
+          example: 'Corolla'
+          description: |
+            Modelo comercial do veículo.
         manufactureYear:
           type: integer
+          example: 2023
+          description: |
+            Ano em que o veículo foi fisicamente fabricado.
         createdAt:
           type: string
           format: date-time
+          example: '2026-10-02T11:00:00Z'
+          description: |
+            Carimbo de data e hora em que o registro foi criado (**ISO-8601 UTC**).
+        updatedAt:
+          type: string
+          format: date-time
+          example: '2026-10-08T09:30:00Z'
+          description: |
+            Carimbo de data e hora da última modificação cadastral (**ISO-8601 UTC**).
+        _links:
+          type: object
+          description: |
+            Links hipermídia para navegação e transições de estado conforme padrão **HAL** / **Spring HATEOAS**.
+          properties:
+            self:
+              $ref: '#/components/schemas/Link'
+
+    VehicleCustomerItemResponse:
+      type: object
+      description: Resumo dos dados cadastrais do cliente proprietário no contexto do veículo
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: '3fa85f64-5717-4562-b3fc-2c963f66afa6'
+          description: |
+            Identificador único universal do cliente proprietário (`UUID v4`).
+        name:
+          type: string
+          example: 'Carlos Silva'
+          description: |
+            Nome completo ou razão social do cliente proprietário.
+        email:
+          type: string
+          format: email
+          example: 'carlos.silva@example.com'
+          description: |
+            Endereço de e-mail principal para contato (**RFC 5322**).
+        document:
+          type: string
+          example: '52998224725'
+          description: |
+            Número do documento fiscal (**CPF** ou **CNPJ**) do cliente.
+        _links:
+          type: object
+          description: |
+            Links hipermídia para navegação e transições de estado conforme padrão **HAL** / **Spring HATEOAS**.
+          properties:
+            self:
+              $ref: '#/components/schemas/Link'
+
+    VehicleSummaryResponse:
+      type: object
+      description: Resumo cadastral do veículo para buscas e filtros rápidos
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: '6c8f9b1e-3a4d-4e5f-b6a7-8c9d0e1f2a3b'
+          description: |
+            Identificador único universal do veículo (`UUID v4`).
+        customerDocument:
+          type: string
+          example: '52998224725'
+          description: |
+            Número do documento (**CPF** / **CNPJ**) do cliente proprietário vinculado.
+        customer:
+          description: |
+            Dados cadastrais resumidos do cliente proprietário vinculado ao veículo.
+          $ref: '#/components/schemas/VehicleCustomerItemResponse'
+        licensePlate:
+          type: string
+          example: 'BRA2E19'
+          description: |
+            Placa identificadora do veículo (**Padrão Mercosul** ou **Tradicional**).
+        make:
+          type: string
+          example: 'Toyota'
+          description: |
+            Nome da fabricante/montadora do veículo.
+        model:
+          type: string
+          example: 'Corolla'
+          description: |
+            Modelo comercial do veículo.
+        manufactureYear:
+          type: integer
+          example: 2023
+          description: |
+            Ano em que o veículo foi fisicamente fabricado.
+        createdAt:
+          type: string
+          format: date-time
+          example: '2026-10-02T11:00:00Z'
+          description: |
+            Carimbo de data e hora em que o registro foi criado (**ISO-8601 UTC**).
+        _links:
+          type: object
+          description: |
+            Links hipermídia para navegação e transições de estado conforme padrão **HAL** / **Spring HATEOAS**.
+          properties:
+            self:
+              $ref: '#/components/schemas/Link'
+
+    PagedVehicleResponse:
+      type: object
+      description: Resposta paginada de veículos
+      properties:
+        content:
+          type: array
+          description: |
+            Lista contendo os resumos dos veículos recuperados para a página atual.
+          items:
+            $ref: '#/components/schemas/VehicleSummaryResponse'
+        _links:
+          description: |
+            Links hipermídia de navegação entre páginas (`self`, `first`, `prev`, `next`, `last`).
+          $ref: '#/components/schemas/PageLinks'
+        page:
+          type: integer
+          example: 0
+          description: |
+            Número da página atual (índice base `0`).
+        size:
+          type: integer
+          example: 20
+          description: |
+            Quantidade máxima de registros por página solicitada.
+        totalElements:
+          type: integer
+          format: int64
+          example: 42
+          description: |
+            Quantidade total de registros encontrados na base de dados para o critério consultado.
+        totalPages:
+          type: integer
+          example: 3
+          description: |
+            Quantidade total de páginas calculadas disponíveis para navegação.
 
     # -----------------------------------------------------------------------
     # Service Catalog Schemas
     # -----------------------------------------------------------------------
     CreateServiceCatalogRequest:
       type: object
+      description: Requisição de cadastro de serviço padronizado no catálogo
       required:
         - code
         - name
@@ -627,62 +2385,207 @@ components:
       properties:
         code:
           type: string
+          minLength: 3
+          maxLength: 50
           example: 'SRV-OIL-01'
+          description: |
+            Código padronizado único do serviço no catálogo (mínimo `3`, máximo `50` caracteres).
         name:
           type: string
+          minLength: 3
+          maxLength: 150
           example: 'Troca de Óleo e Filtro'
+          description: |
+            Nome descritivo padronizado do serviço (mínimo `3`, máximo `150` caracteres).
         description:
           type: string
+          maxLength: 500
           example: 'Substituição completa do óleo e filtro do motor'
+          description: |
+            Detalhamento técnico das atividades incluídas na execução do serviço (máximo `500` caracteres).
         price:
           type: number
-          format: double
+          minimum: 0.01
           example: 150.00
+          description: |
+            Preço padrão sugerido de mão de obra (**Monetário BigDecimal**, mínimo `0.01`).
+
+    PatchServiceCatalogRequest:
+      type: object
+      description: Requisição de atualização parcial dos dados do serviço no catálogo
+      properties:
+        name:
+          type: string
+          minLength: 3
+          maxLength: 150
+          example: 'Troca de Óleo e Filtro de Alta Performance'
+          description: |
+            Nome descritivo atualizado do serviço (mínimo `3`, máximo `150` caracteres).
+        description:
+          type: string
+          maxLength: 500
+          example: 'Substituição completa do óleo 5W30 sintético e filtro'
+          description: |
+            Detalhamento técnico atualizado das atividades do serviço (máximo `500` caracteres).
+        price:
+          type: number
+          minimum: 0.01
+          example: 180.00
+          description: |
+            Preço atualizado sugerido de mão de obra (**Monetário BigDecimal**, mínimo `0.01`).
         estimatedMinutes:
           type: integer
           format: int64
+          minimum: 1
           example: 60
+          description: |
+            Tempo médio estimado para execução das tarefas em minutos (mínimo `1`).
 
-    UpdateServiceCatalogPriceRequest:
+    # =========================================================================
+    # Service Catalog Schemas (ADR-0003: DTO Granularity & Symmetry)
+    # Padrões aplicados:
+    # - ServiceCatalogDetailedResponse: Detalhes completos do catálogo de serviços
+    # - ServiceCatalogSummaryResponse: Resumo plano para listagens e seleções
+    # =========================================================================
+    ServiceCatalogDetailedResponse:
       type: object
-      required:
-        - price
-      properties:
-        price:
-          type: number
-          format: double
-          example: 180.00
-
-    ServiceCatalogResponse:
-      type: object
+      description: Detalhes completos do serviço no catálogo (inclui descrições e histórico)
       properties:
         id:
           type: string
           format: uuid
+          example: '7c7da75e-1ced-4520-9362-e328bba8b4ae'
+          description: |
+            Identificador único universal do serviço no catálogo (`UUID v4`).
         code:
           type: string
+          example: 'SRV-OIL-01'
+          description: |
+            Código padronizado do serviço no catálogo.
         name:
           type: string
+          example: 'Troca de Óleo e Filtro'
+          description: |
+            Nome descritivo do serviço.
         description:
           type: string
+          example: 'Substituição completa do óleo e filtro do motor'
+          description: |
+            Detalhamento das atividades incluídas no serviço.
         price:
           type: number
-          format: double
+          minimum: 0.01
+          example: 150.00
+          description: |
+            Preço padrão da mão de obra (**Monetário BigDecimal**).
         estimatedMinutes:
           type: integer
           format: int64
+          example: 45
+          description: |
+            Tempo médio real de execução apurado em minutos.
         createdAt:
           type: string
           format: date-time
+          example: '2026-10-01T10:00:00Z'
+          description: |
+            Carimbo de data e hora em que o registro foi criado (**ISO-8601 UTC**).
         updatedAt:
           type: string
           format: date-time
+          example: '2026-10-08T09:00:00Z'
+          description: |
+            Carimbo de data e hora da última atualização cadastral (**ISO-8601 UTC**).
+        _links:
+          type: object
+          description: |
+            Links hipermídia para navegação e transições de estado conforme padrão **HAL** / **Spring HATEOAS**.
+          properties:
+            self:
+              $ref: '#/components/schemas/Link'
+
+    ServiceCatalogSummaryResponse:
+      type: object
+      description: Resumo plano do serviço para listagens e seleções no catálogo
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: '7c7da75e-1ced-4520-9362-e328bba8b4ae'
+          description: |
+            Identificador único universal do serviço no catálogo (`UUID v4`).
+        code:
+          type: string
+          example: 'SRV-OIL-01'
+          description: |
+            Código padronizado do serviço no catálogo.
+        name:
+          type: string
+          example: 'Troca de Óleo e Filtro'
+          description: |
+            Nome descritivo do serviço.
+        price:
+          type: number
+          minimum: 0.01
+          example: 150.00
+          description: |
+            Preço padrão da mão de obra (**Monetário BigDecimal**).
+        estimatedMinutes:
+          type: integer
+          format: int64
+          example: 45
+          description: |
+            Tempo médio real de execução apurado em minutos.
+        _links:
+          type: object
+          description: |
+            Links hipermídia para navegação e transições de estado conforme padrão **HAL** / **Spring HATEOAS**.
+          properties:
+            self:
+              $ref: '#/components/schemas/Link'
+
+    PagedServiceCatalogResponse:
+      type: object
+      description: Resposta paginada de serviços do catálogo
+      properties:
+        content:
+          type: array
+          description: |
+            Lista contendo os resumos dos serviços recuperados para a página atual.
+          items:
+            $ref: '#/components/schemas/ServiceCatalogSummaryResponse'
+        _links:
+          description: |
+            Links hipermídia de navegação entre páginas (`self`, `first`, `prev`, `next`, `last`).
+          $ref: '#/components/schemas/PageLinks'
+        page:
+          type: integer
+          example: 0
+          description: |
+            Número da página atual (índice base `0`).
+        size:
+          type: integer
+          example: 20
+          description: |
+            Quantidade máxima de registros por página solicitada.
+        totalElements:
+          type: integer
+          format: int64
+          example: 15
+          description: |
+            Quantidade total de registros encontrados na base de dados para o critério consultado.
+        totalPages:
+          type: integer
+          example: 1
+          description: |
+            Quantidade total de páginas calculadas disponíveis para navegação.
 
     # -----------------------------------------------------------------------
     # Material Schemas
     # -----------------------------------------------------------------------
     CreateMaterialRequest:
       type: object
+      description: Requisição de cadastro de peça ou material
       required:
         - sku
         - name
@@ -690,113 +2593,391 @@ components:
       properties:
         sku:
           type: string
+          minLength: 3
+          maxLength: 50
           example: 'PART-BRK-01'
+          description: |
+            Código identificador único de controle de estoque (**SKU**, mínimo `3`, máximo `50` caracteres).
         name:
           type: string
+          minLength: 3
+          maxLength: 150
           example: 'Pastilha de Freio Dianteira'
+          description: |
+            Nome descritivo padronizado da peça ou material (mínimo `3`, máximo `150` caracteres).
         description:
           type: string
+          maxLength: 500
           example: 'Pastilhas cerâmicas para eixo dianteiro'
+          description: |
+            Descrição técnica ou especificação detalhada de aplicação do material (máximo `500` caracteres).
         unitCost:
           type: number
-          format: double
+          minimum: 0.0
           example: 80.00
+          description: |
+            Custo unitário de aquisição do material (**Monetário BigDecimal**, mínimo `0.00`).
         unitPrice:
           type: number
-          format: double
+          minimum: 0.01
           example: 140.00
+          description: |
+            Preço unitário de venda do material (**Monetário BigDecimal**, mínimo `0.01`).
         initialStock:
           type: integer
+          minimum: 0
           example: 20
+          description: |
+            Quantidade física inicial disponível em estoque (número inteiro não-negativo).
         minStock:
           type: integer
+          minimum: 0
           example: 5
+          description: |
+            Nível de estoque mínimo recomendado para acionamento de reposição.
 
-    UpdateMaterialPriceRequest:
+    PatchMaterialRequest:
       type: object
-      required:
-        - unitPrice
+      description: Requisição de atualização parcial dos dados e precificação do material
       properties:
-        unitPrice:
-          type: number
-          format: double
-          example: 155.00
+        name:
+          type: string
+          minLength: 3
+          maxLength: 150
+          example: 'Pastilha de Freio Cerâmica Premium'
+          description: |
+            Nome comercial atualizado da peça ou material (mínimo `3`, máximo `150` caracteres).
+        description:
+          type: string
+          maxLength: 500
+          example: 'Pastilhas cerâmicas para alto rendimento'
+          description: |
+            Descrição técnica ou especificação atualizada do material (máximo `500` caracteres).
         unitCost:
           type: number
-          format: double
+          minimum: 0.0
           example: 85.00
+          description: |
+            Custo unitário de aquisição atualizado (**Monetário BigDecimal**, mínimo `0.00`).
+        unitPrice:
+          type: number
+          minimum: 0.01
+          example: 155.00
+          description: |
+            Preço unitário de venda atualizado (**Monetário BigDecimal**, mínimo `0.01`).
+        minStock:
+          type: integer
+          minimum: 0
+          example: 10
+          description: |
+            Nível de estoque mínimo recomendado atualizado.
 
-    MaterialResponse:
+    # =========================================================================
+    # Material Schemas (ADR-0003: DTO Granularity & Symmetry)
+    # Padrões aplicados:
+    # - MaterialDetailedResponse: Detalhes cadastrais completos, buffer e custos
+    # - MaterialSummaryResponse: Resumo plano para listagens de estoque e catálogo
+    # =========================================================================
+    MaterialDetailedResponse:
       type: object
+      description: Detalhes cadastrais e de estoque completos da peça/material (inclui buffers e custos)
       properties:
         id:
           type: string
           format: uuid
+          example: '4a1e9447-e6f1-460d-9b0d-b4b0e8c7c103'
+          description: |
+            Identificador único universal da peça ou material (`UUID v4`).
         sku:
           type: string
+          example: 'PART-BRK-01'
+          description: |
+            Código identificador único de controle de estoque (**SKU**).
         name:
           type: string
+          example: 'Pastilha de Freio Dianteira'
+          description: |
+            Nome descritivo padronizado da peça ou material.
         description:
           type: string
+          example: 'Pastilhas cerâmicas para eixo dianteiro'
+          description: |
+            Descrição técnica ou especificação detalhada de aplicação.
         unitCost:
           type: number
-          format: double
+          minimum: 0.0
+          example: 80.00
+          description: |
+            Custo unitário de aquisição (**Monetário BigDecimal**).
         unitPrice:
           type: number
-          format: double
+          minimum: 0.01
+          example: 140.00
+          description: |
+            Preço unitário de venda (**Monetário BigDecimal**).
         stockQuantity:
           type: integer
+          example: 20
+          description: |
+            Quantidade total física presente no estoque.
+        reservedQuantity:
+          type: integer
+          example: 2
+          description: |
+            Quantidade de unidades reservadas para ordens de serviço em andamento.
+        availableQuantity:
+          type: integer
+          example: 18
+          description: |
+            Quantidade líquida disponível para reserva em novas ordens de serviço.
         minStock:
           type: integer
+          example: 5
+          description: |
+            Nível de estoque mínimo de segurança recomendado.
         createdAt:
           type: string
           format: date-time
+          example: '2026-10-01T10:00:00Z'
+          description: |
+            Carimbo de data e hora em que o registro foi criado (**ISO-8601 UTC**).
         updatedAt:
           type: string
           format: date-time
+          example: '2026-10-08T09:00:00Z'
+          description: |
+            Carimbo de data e hora da última modificação cadastral (**ISO-8601 UTC**).
+        _links:
+          type: object
+          description: |
+            Links hipermídia para navegação e transições de estado conforme padrão **HAL** / **Spring HATEOAS**.
+          properties:
+            self:
+              $ref: '#/components/schemas/Link'
 
-    # -----------------------------------------------------------------------
-    # ProblemDetail (RFC 7807/9457)
-    # -----------------------------------------------------------------------
+    MaterialSummaryResponse:
+      type: object
+      description: Resumo plano da peça/material para listagens e seleções no catálogo
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: '4a1e9447-e6f1-460d-9b0d-b4b0e8c7c103'
+          description: |
+            Identificador único universal da peça ou material (`UUID v4`).
+        sku:
+          type: string
+          example: 'PART-BRK-01'
+          description: |
+            Código identificador único de controle de estoque (**SKU**).
+        name:
+          type: string
+          example: 'Pastilha de Freio Dianteira'
+          description: |
+            Nome descritivo padronizado da peça ou material.
+        unitPrice:
+          type: number
+          minimum: 0.01
+          example: 140.00
+          description: |
+            Preço unitário de venda (**Monetário BigDecimal**).
+        availableQuantity:
+          type: integer
+          example: 18
+          description: |
+            Quantidade líquida disponível para alocação em novas ordens.
+        _links:
+          type: object
+          description: |
+            Links hipermídia para navegação e transições de estado conforme padrão **HAL** / **Spring HATEOAS**.
+          properties:
+            self:
+              $ref: '#/components/schemas/Link'
+
+    PagedMaterialResponse:
+      type: object
+      description: Resposta paginada de peças e materiais
+      properties:
+        content:
+          type: array
+          description: |
+            Lista contendo os resumos dos materiais recuperados para a página atual.
+          items:
+            $ref: '#/components/schemas/MaterialSummaryResponse'
+        _links:
+          description: |
+            Links hipermídia de navegação entre páginas (`self`, `first`, `prev`, `next`, `last`).
+          $ref: '#/components/schemas/PageLinks'
+        page:
+          type: integer
+          example: 0
+          description: |
+            Número da página atual (índice base `0`).
+        size:
+          type: integer
+          example: 20
+          description: |
+            Quantidade máxima de registros por página solicitada.
+        totalElements:
+          type: integer
+          format: int64
+          example: 50
+          description: |
+            Quantidade total de registros encontrados na base de dados para o critério consultado.
+        totalPages:
+          type: integer
+          example: 3
+          description: |
+            Quantidade total de páginas calculadas disponíveis para navegação.
+
+    # =========================================================================
+    # Error Handling Schema (RFC 7807 / RFC 9457: Problem Details for HTTP APIs)
+    # Padrão canônico de respostas de erro para APIs HTTP/REST.
+    # Provê semântica unificada de falhas operacionais e de regras de negócio,
+    # rastreabilidade distribuída (traceId) e código padronizado (errorCode).
+    # Content-Type correspondente: application/problem+json
+    # =========================================================================
     ProblemDetail:
       type: object
+      description: Estrutura padrão de erro conforme especificações RFC 7807 e RFC 9457
+      example:
+        type: 'https://api.fiap.com.br/errors/bad-request'
+        title: 'Bad Request'
+        status: 400
+        detail: 'Atributos inválidos na requisição ou violação de regra de negócio'
+        instance: '/api/v1/work-orders'
+        errorCode: 'INVALID_ARGUMENT'
+        timestamp: '2026-10-08T10:30:00Z'
+        traceId: 'c3d8e5f2a1b4c7d9'
+        fieldErrors:
+          campo: 'Descrição da violação de validação'
+        errors:
+          - 'Descrição da inconsistência ou violação de regra'
       properties:
         type:
           type: string
           format: uri
+          description: |
+            URI absoluta de referência que identifica a categoria semântica do tipo do problema (**RFC 7807** / **RFC 9457**).
         title:
           type: string
+          description: |
+            Resumo curto, estável e legível por humanos sobre o problema ocorrido.
         status:
           type: integer
+          description: |
+            Código de status HTTP numérico retornado pelo servidor na resposta (ex: `400`, `404`, `409`, `422`, `500`).
         detail:
           type: string
+          description: |
+            Explicação humana contextualizada e específica sobre esta ocorrência pontual do problema.
         instance:
           type: string
           format: uri
+          description: |
+            URI relativa do endpoint e recurso específico que originou a requisição causadora do erro.
         errorCode:
           type: string
+          description: |
+            Código mnemônico padronizado de erro de negócio para tratamento programático pelos clientes da API (ex: `INVALID_ARGUMENT`, `RESOURCE_NOT_FOUND`).
         timestamp:
           type: string
           format: date-time
+          description: |
+            Carimbo de data e hora em que a falha foi registrada no servidor (**ISO-8601 UTC**).
         traceId:
           type: string
+          description: |
+            Identificador único de rastreabilidade distribuída para correlação em logs e observabilidade (**APM** / **OpenTelemetry**).
+        fieldErrors:
+          type: object
+          additionalProperties:
+            type: string
+          description: |
+            Dicionário contendo as violações de validação por atributo (`campo` -> mensagem de erro) originadas de validações **Jakarta Bean Validation**.
+        errors:
+          type: array
+          items:
+            type: string
+          description: |
+            Lista contendo mensagens detalhadas de violação de invariantes de negócio ou validações de domínio.
+
+  headers:
+    CorrelationIdHeader:
+      description: Identificador único de correlação transacional distribuída (UUID v4) refletido na resposta para rastreabilidade
+      schema:
+        type: string
+        format: uuid
+      example: 'c3d8e5f2-a1b4-47d9-9e8c-7f6a5b4c3d2e'
 
   responses:
     BadRequest:
-      description: Bad Request
+      description: Requisição Inválida (Bad Request) - Violação de validação ou argumentos incorretos
+      headers:
+        X-Correlation-Id:
+          $ref: '#/components/headers/CorrelationIdHeader'
       content:
         application/problem+json:
           schema:
             $ref: '#/components/schemas/ProblemDetail'
     NotFound:
-      description: Resource Not Found
+      description: Recurso Não Encontrado (Not Found) - Identificador inexistente na base de dados
+      headers:
+        X-Correlation-Id:
+          $ref: '#/components/headers/CorrelationIdHeader'
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetail'
+    Conflict:
+      description: Conflito de Estado ou Duplicidade (Conflict) - Recurso já existente ou estado incompatível
+      headers:
+        X-Correlation-Id:
+          $ref: '#/components/headers/CorrelationIdHeader'
       content:
         application/problem+json:
           schema:
             $ref: '#/components/schemas/ProblemDetail'
     UnprocessableEntity:
-      description: Validation or Domain Exception
+      description: Erro de Regra de Negócio (Unprocessable Entity) - Violação de invariantes de domínio
+      headers:
+        X-Correlation-Id:
+          $ref: '#/components/headers/CorrelationIdHeader'
       content:
         application/problem+json:
           schema:
             $ref: '#/components/schemas/ProblemDetail'
+    InternalServerError:
+      description: Erro Inesperado do Servidor (Internal Server Error) - Falha interna não tratada
+      headers:
+        X-Correlation-Id:
+          $ref: '#/components/headers/CorrelationIdHeader'
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetail'
+    Unauthorized:
+      description: Não Autenticado (Unauthorized) - Credenciais ausentes ou token expirado
+      headers:
+        X-Correlation-Id:
+          $ref: '#/components/headers/CorrelationIdHeader'
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetail'
+    Forbidden:
+      description: Acesso Negado (Forbidden) - Permissões insuficientes para a operação
+      headers:
+        X-Correlation-Id:
+          $ref: '#/components/headers/CorrelationIdHeader'
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetail'
+
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Token de autenticação JWT padrão (Cognito / API Gateway)

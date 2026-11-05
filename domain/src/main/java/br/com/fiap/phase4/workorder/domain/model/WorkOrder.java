@@ -75,6 +75,10 @@ public class WorkOrder {
     @OneToMany(mappedBy = "workOrder", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
     private List<WorkOrderMaterialItem> materials = new ArrayList<>();
 
+    @Getter(AccessLevel.NONE)
+    @OneToMany(mappedBy = "workOrder", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
+    private List<WorkOrderStatusHistory> statusHistory = new ArrayList<>();
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
@@ -118,46 +122,112 @@ public class WorkOrder {
                 description, WorkOrderStatus.RECEIVED, BigDecimal.ZERO, List.of(), List.of(), Instant.now(), Instant.now());
     }
 
+    public void startDiagnosis() {
+        if (this.status != WorkOrderStatus.RECEIVED) {
+            throw new DomainException("INVALID_STATUS_TRANSITION",
+                    "Cannot start diagnosis for a work order in status: " + this.status);
+        }
+        transitionTo(WorkOrderStatus.DIAGNOSING, "Diagnosis started by mechanic", null);
+    }
+
+    public void finishDiagnosisAndSendBudget() {
+        if (this.status != WorkOrderStatus.DIAGNOSING && this.status != WorkOrderStatus.RECEIVED) {
+            throw new DomainException("INVALID_STATUS_TRANSITION",
+                    "Cannot send budget for a work order in status: " + this.status);
+        }
+        transitionTo(WorkOrderStatus.WAITING_APPROVAL, "Diagnosis completed, budget waiting customer approval", null);
+    }
+
     public void approve() {
-        if (this.status == WorkOrderStatus.CANCELED || this.status == WorkOrderStatus.COMPLETED) {
+        if (this.status != WorkOrderStatus.WAITING_APPROVAL) {
             throw new DomainException("INVALID_STATUS_TRANSITION",
-                    "Cannot approve a work order in status: " + this.status);
+                    "Cannot approve work order before budget is generated. Current status: " + this.status);
         }
-        this.status = WorkOrderStatus.APPROVED;
-        this.updatedAt = Instant.now();
+        transitionTo(WorkOrderStatus.APPROVED, "Budget approved by customer", null);
     }
 
-    public void cancel(String reason) {
-        if (this.status == WorkOrderStatus.COMPLETED) {
+    public void startExecution() {
+        if (this.status != WorkOrderStatus.APPROVED) {
             throw new DomainException("INVALID_STATUS_TRANSITION",
-                    "Cannot cancel an already completed work order");
+                    "Cannot execute work order before budget is approved. Current status: " + this.status);
         }
-        this.status = WorkOrderStatus.CANCELED;
-        this.updatedAt = Instant.now();
-    }
-
-    public void rejectPayment(String reason) {
-        this.status = WorkOrderStatus.PAYMENT_REJECTED;
-        this.updatedAt = Instant.now();
+        transitionTo(WorkOrderStatus.EXECUTING, "Repairs started by mechanic", null);
     }
 
     public void complete() {
-        this.status = WorkOrderStatus.COMPLETED;
-        this.updatedAt = Instant.now();
+        if (this.status != WorkOrderStatus.EXECUTING && this.status != WorkOrderStatus.APPROVED) {
+            throw new DomainException("INVALID_STATUS_TRANSITION",
+                    "Cannot complete a work order that is not in execution or approved. Current: " + this.status);
+        }
+        transitionTo(WorkOrderStatus.COMPLETED, "Repairs completed", null);
     }
 
-    public void addService(UUID serviceId, Money unitPrice, int quantity) {
-        WorkOrderServiceItem item = WorkOrderServiceItem.of(this, serviceId, unitPrice, quantity);
+    public void markAsPaid() {
+        if (this.status != WorkOrderStatus.COMPLETED) {
+            throw new DomainException("INVALID_STATUS_TRANSITION",
+                    "Cannot confirm payment for a work order that is not COMPLETED. Current: " + this.status);
+        }
+        transitionTo(WorkOrderStatus.PAID, "Payment confirmed by Mercado Pago webhook", null);
+    }
+
+    public void deliver() {
+        if (this.status == WorkOrderStatus.COMPLETED) {
+            throw new DomainException("INVALID_STATUS_TRANSITION",
+                    "Work order cannot be delivered before payment is confirmed");
+        }
+        if (this.status != WorkOrderStatus.PAID) {
+            throw new DomainException("INVALID_STATUS_TRANSITION",
+                    "Cannot deliver a work order that is not PAID. Current: " + this.status);
+        }
+        transitionTo(WorkOrderStatus.DELIVERED, "Vehicle released to customer", null);
+    }
+
+    public void cancel(String reason) {
+        if (this.status == WorkOrderStatus.COMPLETED || this.status == WorkOrderStatus.PAID || this.status == WorkOrderStatus.DELIVERED) {
+            throw new DomainException("INVALID_STATUS_TRANSITION",
+                    "Cannot cancel an already finalized work order");
+        }
+        transitionTo(WorkOrderStatus.CANCELED, reason, null);
+    }
+
+    public void rejectPayment(String reason) {
+        transitionTo(WorkOrderStatus.PAYMENT_REJECTED, reason, null);
+    }
+
+    public void transitionTo(WorkOrderStatus newStatus, String reason, String changedBy) {
+        if (this.status == newStatus) {
+            return;
+        }
+        WorkOrderStatus from = this.status;
+        this.status = newStatus;
+        this.updatedAt = Instant.now();
+        this.statusHistory.add(WorkOrderStatusHistory.record(this, from, newStatus, reason, changedBy));
+    }
+
+    public List<WorkOrderStatusHistory> getStatusHistory() {
+        return Collections.unmodifiableList(statusHistory);
+    }
+
+    public void addService(UUID serviceId, String itemName, String itemCode, Money unitPrice, int quantity) {
+        WorkOrderServiceItem item = WorkOrderServiceItem.of(this, serviceId, itemName, itemCode, unitPrice, quantity);
         this.services.add(item);
         this.totalAmount = calculateTotalAmount().amount();
         this.updatedAt = Instant.now();
     }
 
-    public void addMaterial(UUID materialId, Money unitPrice, int quantity) {
-        WorkOrderMaterialItem item = WorkOrderMaterialItem.of(this, materialId, unitPrice, quantity);
+    public void addService(UUID serviceId, Money unitPrice, int quantity) {
+        addService(serviceId, null, null, unitPrice, quantity);
+    }
+
+    public void addMaterial(UUID materialId, String itemName, String itemSku, Money unitPrice, int quantity) {
+        WorkOrderMaterialItem item = WorkOrderMaterialItem.of(this, materialId, itemName, itemSku, unitPrice, quantity);
         this.materials.add(item);
         this.totalAmount = calculateTotalAmount().amount();
         this.updatedAt = Instant.now();
+    }
+
+    public void addMaterial(UUID materialId, Money unitPrice, int quantity) {
+        addMaterial(materialId, null, null, unitPrice, quantity);
     }
 
     public Money calculateTotalAmount() {

@@ -7,6 +7,15 @@ public enum WorkOrderStatus {
     APPROVED,
     EXECUTING,
     COMPLETED,
+    PAID,
+    DELIVERED,
     CANCELED,
-    PAYMENT_REJECTED
+    PAYMENT_REJECTED;
+
+    public static WorkOrderStatus fromString(String value) {
+        if (value == null || value.isBlank()) {
+            throw new IllegalArgumentException("Status cannot be null or blank");
+        }
+        return WorkOrderStatus.valueOf(value.trim().toUpperCase());
+    }
 }

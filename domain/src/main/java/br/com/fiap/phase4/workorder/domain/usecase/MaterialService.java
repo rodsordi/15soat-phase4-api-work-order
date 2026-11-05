@@ -49,6 +49,18 @@ public class MaterialService implements CreateMaterialUseCase, GetMaterialUseCas
     }
 
     @Override
+    public Material updateMaterial(UUID id, String name, String description, Money unitCost, Money unitPrice, Integer minStock) {
+        Material material = getById(id);
+        if (unitPrice != null || unitCost != null) {
+            Money effectivePrice = unitPrice != null ? unitPrice : material.getUnitPrice();
+            Money effectiveCost = unitCost != null ? unitCost : material.getUnitCost();
+            material.updatePrice(effectivePrice, effectiveCost);
+        }
+        material.updateDetails(name, description, minStock);
+        return materialRepository.save(material);
+    }
+
+    @Override
     public Material updatePrice(UUID id, Money newPrice, Money newCost) {
         Material material = getById(id);
         material.updatePrice(newPrice, newCost);

@@ -23,6 +23,11 @@ public class ServiceCatalogService implements CreateServiceCatalogUseCase, GetSe
     private final ServiceCatalogRepositoryPort serviceCatalogRepository;
 
     @Override
+    public ServiceCatalog createService(String code, String name, String description, Money price) {
+        return createService(code, name, description, price, 0L);
+    }
+
+    @Override
     public ServiceCatalog createService(String code, String name, String description,
                                         Money price, Long estimatedMinutes) {
         if (serviceCatalogRepository.existsByCode(code.trim().toUpperCase())) {
@@ -50,9 +55,26 @@ public class ServiceCatalogService implements CreateServiceCatalogUseCase, GetSe
     }
 
     @Override
+    public ServiceCatalog updateService(UUID id, String name, String description, Money price, Long estimatedMinutes) {
+        ServiceCatalog serviceCatalog = getById(id);
+        if (price != null) {
+            serviceCatalog.updatePrice(price);
+        }
+        serviceCatalog.updateDetails(name, description, estimatedMinutes);
+        return serviceCatalogRepository.save(serviceCatalog);
+    }
+
+    @Override
     public ServiceCatalog updatePrice(UUID id, Money newPrice) {
         ServiceCatalog serviceCatalog = getById(id);
         serviceCatalog.updatePrice(newPrice);
+        return serviceCatalogRepository.save(serviceCatalog);
+    }
+
+    @Override
+    public ServiceCatalog updateDetails(UUID id, String name, String description) {
+        ServiceCatalog serviceCatalog = getById(id);
+        serviceCatalog.updateDetails(name, description);
         return serviceCatalogRepository.save(serviceCatalog);
     }
 

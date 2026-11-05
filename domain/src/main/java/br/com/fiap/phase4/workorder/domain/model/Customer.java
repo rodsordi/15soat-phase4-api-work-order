@@ -72,6 +72,16 @@ public class Customer {
         this.updatedAt = Instant.now();
     }
 
+    public void update(String name, String email) {
+        if (name != null && !name.isBlank()) {
+            this.name = name;
+        }
+        if (email != null && !email.isBlank()) {
+            this.email = email;
+        }
+        this.updatedAt = Instant.now();
+    }
+
     public List<Vehicle> getVehicles() {
         return Collections.unmodifiableList(vehicles);
     }

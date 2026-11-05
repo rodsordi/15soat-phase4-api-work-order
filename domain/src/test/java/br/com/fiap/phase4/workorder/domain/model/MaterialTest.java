@@ -120,4 +120,48 @@ class MaterialTest {
                 .isInstanceOf(DomainException.class)
                 .hasMessageContaining("Stock cannot drop below zero");
     }
+
+    @Test
+    @DisplayName("Should successfully reserve, release and conclude material stock")
+    void shouldManageReservationLifecycleSuccessfully() {
+        Material material = Material.create(
+                "PART-BRK-01",
+                "Front Brake Pads",
+                "Description",
+                Money.of(new BigDecimal("45.00")),
+                Money.of(new BigDecimal("95.00")),
+                10,
+                2
+        );
+
+        material.reserveQuantity(4);
+        assertThat(material.getReservedQuantity()).isEqualTo(4);
+        assertThat(material.getStockQuantity()).isEqualTo(10);
+
+        material.releaseReservedQuantity(1);
+        assertThat(material.getReservedQuantity()).isEqualTo(3);
+
+        material.concludeReservedQuantity(2);
+        assertThat(material.getReservedQuantity()).isEqualTo(1);
+        assertThat(material.getStockQuantity()).isEqualTo(8);
+    }
+
+    @Test
+    @DisplayName("Should fail when attempting to reserve more than available stock")
+    void shouldFailWhenReservingMoreThanAvailable() {
+        Material material = Material.create(
+                "PART-BRK-01",
+                "Front Brake Pads",
+                "Description",
+                Money.of(new BigDecimal("45.00")),
+                Money.of(new BigDecimal("95.00")),
+                5,
+                1
+        );
+
+        material.reserveQuantity(3);
+        assertThatThrownBy(() -> material.reserveQuantity(3))
+                .isInstanceOf(DomainException.class)
+                .hasMessageContaining("Cannot reserve 3 units");
+    }
 }

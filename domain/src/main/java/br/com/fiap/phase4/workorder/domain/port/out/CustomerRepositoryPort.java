@@ -13,4 +13,5 @@ public interface CustomerRepositoryPort {
     Optional<Customer> findByEmail(String email);
     List<Customer> findAll();
     boolean existsByDocument(String document);
+    void delete(Customer customer);
 }
