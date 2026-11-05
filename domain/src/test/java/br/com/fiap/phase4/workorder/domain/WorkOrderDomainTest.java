@@ -92,6 +92,7 @@ class WorkOrderDomainTest {
                     new br.com.fiap.phase4.commons.domain.vo.LicensePlate("BRA2E19"),
                     "Maintenance"
             );
+            workOrder.finishDiagnosisAndSendBudget();
             when(repository.findById(id)).thenReturn(Optional.of(workOrder));
 
             WorkOrder updated = updateUseCase.updateStatus(id, WorkOrderStatus.APPROVED, "Approved by customer", "trace-123");
@@ -99,6 +100,22 @@ class WorkOrderDomainTest {
             assertThat(updated.getStatus()).isEqualTo(WorkOrderStatus.APPROVED);
             verify(repository).save(workOrder);
             verify(eventPublisher).publishWorkOrderApproved(workOrder, "trace-123");
+        }
+
+        @Test
+        @DisplayName("Should reject approval before budget is calculated")
+        void shouldRejectApprovalBeforeBudgetCalculated() {
+            UUID id = UUID.randomUUID();
+            WorkOrder workOrder = WorkOrder.create(
+                    new br.com.fiap.phase4.commons.domain.vo.CpfOrCnpj("52998224725"),
+                    new br.com.fiap.phase4.commons.domain.vo.LicensePlate("BRA2E19"),
+                    "Maintenance"
+            );
+            when(repository.findById(id)).thenReturn(Optional.of(workOrder));
+
+            assertThatThrownBy(() -> updateUseCase.updateStatus(id, WorkOrderStatus.APPROVED, "Approved", "trace-123"))
+                    .isInstanceOf(br.com.fiap.phase4.commons.domain.exception.DomainException.class)
+                    .hasMessageContaining("Cannot approve work order before budget is generated");
         }
 
         @Test
@@ -110,7 +127,11 @@ class WorkOrderDomainTest {
                     new br.com.fiap.phase4.commons.domain.vo.LicensePlate("BRA2E19"),
                     "Maintenance"
             );
+            workOrder.finishDiagnosisAndSendBudget();
+            workOrder.approve();
+            workOrder.startExecution();
             workOrder.complete();
+            workOrder.markAsPaid();
             when(repository.findById(id)).thenReturn(Optional.of(workOrder));
 
             WorkOrder updated = updateUseCase.updateStatus(id, WorkOrderStatus.DELIVERED, "Vehicle delivered", "trace-123");
@@ -118,6 +139,64 @@ class WorkOrderDomainTest {
             assertThat(updated.getStatus()).isEqualTo(WorkOrderStatus.DELIVERED);
             assertThat(updated.getStatusHistory()).isNotEmpty();
             verify(repository).save(workOrder);
+        }
+
+        @Test
+        @DisplayName("Should reject execution if budget was not approved")
+        void shouldRejectExecutionWithoutApproval() {
+            UUID id = UUID.randomUUID();
+            WorkOrder workOrder = WorkOrder.create(
+                    new br.com.fiap.phase4.commons.domain.vo.CpfOrCnpj("52998224725"),
+                    new br.com.fiap.phase4.commons.domain.vo.LicensePlate("BRA2E19"),
+                    "Maintenance"
+            );
+            workOrder.finishDiagnosisAndSendBudget();
+            when(repository.findById(id)).thenReturn(Optional.of(workOrder));
+
+            assertThatThrownBy(() -> updateUseCase.updateStatus(id, WorkOrderStatus.EXECUTING, "Start repairs", "trace-123"))
+                    .isInstanceOf(br.com.fiap.phase4.commons.domain.exception.DomainException.class)
+                    .hasMessageContaining("Cannot execute work order before budget is approved");
+        }
+
+        @Test
+        @DisplayName("Should reject delivery if work order is completed but not paid")
+        void shouldRejectDeliveryBeforePayment() {
+            UUID id = UUID.randomUUID();
+            WorkOrder workOrder = WorkOrder.create(
+                    new br.com.fiap.phase4.commons.domain.vo.CpfOrCnpj("52998224725"),
+                    new br.com.fiap.phase4.commons.domain.vo.LicensePlate("BRA2E19"),
+                    "Maintenance"
+            );
+            workOrder.finishDiagnosisAndSendBudget();
+            workOrder.approve();
+            workOrder.startExecution();
+            workOrder.complete();
+            when(repository.findById(id)).thenReturn(Optional.of(workOrder));
+
+            assertThatThrownBy(() -> updateUseCase.updateStatus(id, WorkOrderStatus.DELIVERED, "Deliver", "trace-123"))
+                    .isInstanceOf(br.com.fiap.phase4.commons.domain.exception.DomainException.class)
+                    .hasMessageContaining("Work order cannot be delivered before payment is confirmed");
+        }
+
+        @Test
+        @DisplayName("Should reject cancellation of already paid or delivered work order")
+        void shouldRejectCancellationOfFinalizedWorkOrder() {
+            UUID id = UUID.randomUUID();
+            WorkOrder workOrder = WorkOrder.create(
+                    new br.com.fiap.phase4.commons.domain.vo.CpfOrCnpj("52998224725"),
+                    new br.com.fiap.phase4.commons.domain.vo.LicensePlate("BRA2E19"),
+                    "Maintenance"
+            );
+            workOrder.finishDiagnosisAndSendBudget();
+            workOrder.approve();
+            workOrder.startExecution();
+            workOrder.complete();
+            workOrder.markAsPaid();
+            when(repository.findById(id)).thenReturn(Optional.of(workOrder));
+
+            assertThatThrownBy(() -> updateUseCase.updateStatus(id, WorkOrderStatus.CANCELED, "Client requested cancellation", "trace-123"))
+                    .isInstanceOf(br.com.fiap.phase4.commons.domain.exception.DomainException.class)
+                    .hasMessageContaining("Cannot cancel an already finalized work order");
         }
 
         @Test
@@ -131,6 +210,7 @@ class WorkOrderDomainTest {
                     "Maintenance"
             );
             workOrder.addMaterial(materialId, "Brake Pad", "PART-01", br.com.fiap.phase4.commons.domain.vo.Money.of(new java.math.BigDecimal("50.00")), 2);
+            workOrder.finishDiagnosisAndSendBudget();
 
             br.com.fiap.phase4.workorder.domain.model.Material material = br.com.fiap.phase4.workorder.domain.model.Material.create(
                     "PART-01", "Brake Pad", "Desc",

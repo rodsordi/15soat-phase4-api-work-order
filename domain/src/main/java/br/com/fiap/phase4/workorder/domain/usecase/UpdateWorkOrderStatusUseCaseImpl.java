@@ -30,11 +30,37 @@ public class UpdateWorkOrderStatusUseCaseImpl implements UpdateWorkOrderStatusUs
         WorkOrderStatus previousStatus = workOrder.getStatus();
 
         switch (newStatus) {
+            case DIAGNOSING -> {
+                workOrder.startDiagnosis();
+                repository.save(workOrder);
+            }
+            case WAITING_APPROVAL -> {
+                workOrder.finishDiagnosisAndSendBudget();
+                repository.save(workOrder);
+            }
             case APPROVED -> {
                 workOrder.approve();
                 reserveMaterialsForWorkOrder(workOrder);
                 repository.save(workOrder);
                 eventPublisher.publishWorkOrderApproved(workOrder, traceId);
+            }
+            case EXECUTING -> {
+                workOrder.startExecution();
+                repository.save(workOrder);
+            }
+            case COMPLETED -> {
+                workOrder.complete();
+                concludeReservedMaterialsForWorkOrder(workOrder);
+                repository.save(workOrder);
+                eventPublisher.publishWorkOrderCompleted(workOrder, traceId);
+            }
+            case PAID -> {
+                workOrder.markAsPaid();
+                repository.save(workOrder);
+            }
+            case DELIVERED -> {
+                workOrder.deliver();
+                repository.save(workOrder);
             }
             case CANCELED -> {
                 workOrder.cancel(reason);
@@ -48,16 +74,6 @@ public class UpdateWorkOrderStatusUseCaseImpl implements UpdateWorkOrderStatusUs
                 if (previousStatus == WorkOrderStatus.APPROVED) {
                     releaseReservedMaterialsForWorkOrder(workOrder);
                 }
-                repository.save(workOrder);
-            }
-            case COMPLETED -> {
-                workOrder.complete();
-                concludeReservedMaterialsForWorkOrder(workOrder);
-                repository.save(workOrder);
-                eventPublisher.publishWorkOrderCompleted(workOrder, traceId);
-            }
-            case DELIVERED -> {
-                workOrder.deliver();
                 repository.save(workOrder);
             }
             default -> {

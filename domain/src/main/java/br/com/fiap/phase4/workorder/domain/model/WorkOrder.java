@@ -122,16 +122,68 @@ public class WorkOrder {
                 description, WorkOrderStatus.RECEIVED, BigDecimal.ZERO, List.of(), List.of(), Instant.now(), Instant.now());
     }
 
-    public void approve() {
-        if (this.status == WorkOrderStatus.CANCELED || this.status == WorkOrderStatus.COMPLETED || this.status == WorkOrderStatus.DELIVERED) {
+    public void startDiagnosis() {
+        if (this.status != WorkOrderStatus.RECEIVED) {
             throw new DomainException("INVALID_STATUS_TRANSITION",
-                    "Cannot approve a work order in status: " + this.status);
+                    "Cannot start diagnosis for a work order in status: " + this.status);
+        }
+        transitionTo(WorkOrderStatus.DIAGNOSING, "Diagnosis started by mechanic", null);
+    }
+
+    public void finishDiagnosisAndSendBudget() {
+        if (this.status != WorkOrderStatus.DIAGNOSING && this.status != WorkOrderStatus.RECEIVED) {
+            throw new DomainException("INVALID_STATUS_TRANSITION",
+                    "Cannot send budget for a work order in status: " + this.status);
+        }
+        transitionTo(WorkOrderStatus.WAITING_APPROVAL, "Diagnosis completed, budget waiting customer approval", null);
+    }
+
+    public void approve() {
+        if (this.status != WorkOrderStatus.WAITING_APPROVAL) {
+            throw new DomainException("INVALID_STATUS_TRANSITION",
+                    "Cannot approve work order before budget is generated. Current status: " + this.status);
         }
         transitionTo(WorkOrderStatus.APPROVED, "Budget approved by customer", null);
     }
 
+    public void startExecution() {
+        if (this.status != WorkOrderStatus.APPROVED) {
+            throw new DomainException("INVALID_STATUS_TRANSITION",
+                    "Cannot execute work order before budget is approved. Current status: " + this.status);
+        }
+        transitionTo(WorkOrderStatus.EXECUTING, "Repairs started by mechanic", null);
+    }
+
+    public void complete() {
+        if (this.status != WorkOrderStatus.EXECUTING && this.status != WorkOrderStatus.APPROVED) {
+            throw new DomainException("INVALID_STATUS_TRANSITION",
+                    "Cannot complete a work order that is not in execution or approved. Current: " + this.status);
+        }
+        transitionTo(WorkOrderStatus.COMPLETED, "Repairs completed", null);
+    }
+
+    public void markAsPaid() {
+        if (this.status != WorkOrderStatus.COMPLETED) {
+            throw new DomainException("INVALID_STATUS_TRANSITION",
+                    "Cannot confirm payment for a work order that is not COMPLETED. Current: " + this.status);
+        }
+        transitionTo(WorkOrderStatus.PAID, "Payment confirmed by Mercado Pago webhook", null);
+    }
+
+    public void deliver() {
+        if (this.status == WorkOrderStatus.COMPLETED) {
+            throw new DomainException("INVALID_STATUS_TRANSITION",
+                    "Work order cannot be delivered before payment is confirmed");
+        }
+        if (this.status != WorkOrderStatus.PAID) {
+            throw new DomainException("INVALID_STATUS_TRANSITION",
+                    "Cannot deliver a work order that is not PAID. Current: " + this.status);
+        }
+        transitionTo(WorkOrderStatus.DELIVERED, "Vehicle released to customer", null);
+    }
+
     public void cancel(String reason) {
-        if (this.status == WorkOrderStatus.COMPLETED || this.status == WorkOrderStatus.DELIVERED) {
+        if (this.status == WorkOrderStatus.COMPLETED || this.status == WorkOrderStatus.PAID || this.status == WorkOrderStatus.DELIVERED) {
             throw new DomainException("INVALID_STATUS_TRANSITION",
                     "Cannot cancel an already finalized work order");
         }
@@ -140,18 +192,6 @@ public class WorkOrder {
 
     public void rejectPayment(String reason) {
         transitionTo(WorkOrderStatus.PAYMENT_REJECTED, reason, null);
-    }
-
-    public void complete() {
-        transitionTo(WorkOrderStatus.COMPLETED, "Repairs completed", null);
-    }
-
-    public void deliver() {
-        if (this.status != WorkOrderStatus.COMPLETED) {
-            throw new DomainException("INVALID_STATUS_TRANSITION",
-                    "Cannot deliver a work order that is not COMPLETED. Current: " + this.status);
-        }
-        transitionTo(WorkOrderStatus.DELIVERED, "Vehicle released to customer", null);
     }
 
     public void transitionTo(WorkOrderStatus newStatus, String reason, String changedBy) {

@@ -7,6 +7,7 @@ public enum WorkOrderStatus {
     APPROVED,
     EXECUTING,
     COMPLETED,
+    PAID,
     DELIVERED,
     CANCELED,
     PAYMENT_REJECTED;
@@ -15,13 +16,6 @@ public enum WorkOrderStatus {
         if (value == null || value.isBlank()) {
             throw new IllegalArgumentException("Status cannot be null or blank");
         }
-        String normalized = value.trim().toUpperCase();
-        if ("WAITING_FOR_APPROVAL".equals(normalized)) {
-            return WAITING_APPROVAL;
-        }
-        if ("RELEASED".equals(normalized) || "FINISHED".equals(normalized)) {
-            return DELIVERED;
-        }
-        return WorkOrderStatus.valueOf(normalized);
+        return WorkOrderStatus.valueOf(value.trim().toUpperCase());
     }
 }
