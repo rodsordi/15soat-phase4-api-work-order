@@ -25,6 +25,7 @@ concurrency:
 
 permissions:
   contents: read
+  packages: read
 
 jobs:
   build-and-test:
@@ -43,24 +44,15 @@ jobs:
           distribution: 'temurin'
           cache: maven
 
-      - name: Checkout Commons Library
-        uses: actions/checkout@v4
-        with:
-          repository: rodsordi/15soat-phase4-lib-commons
-          ref: feature/phase4
-          path: lib-commons
-
-      - name: Build & Install Commons to Local Maven Cache
-        run: |
-          cd lib-commons
-          mvn clean install -DskipTests -B
-          cd ..
-
       - name: Compile and Run Architecture Verification & Tests
-        run: mvn clean test -B
+        run: mvn clean test -B -s .github/settings.xml
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Package Executable JAR
-        run: mvn package -DskipTests -B
+        run: mvn package -DskipTests -B -s .github/settings.xml
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Validate Helm Chart Syntax
         run: |
