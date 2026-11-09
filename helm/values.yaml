@@ -20,6 +20,14 @@ ingress:
       paths:
         - path: /api/v1/work-orders
           pathType: Prefix
+        - path: /api/v1/customers
+          pathType: Prefix
+        - path: /api/v1/vehicles
+          pathType: Prefix
+        - path: /api/v1/materials
+          pathType: Prefix
+        - path: /api/v1/services
+          pathType: Prefix
 
 resources:
   limits:
@@ -35,7 +43,10 @@ autoscaling:
   maxReplicas: 10
   targetCPUUtilizationPercentage: 75
 
+database:
+  secretName: "work-order-db-credentials"
+
 env:
   SPRING_PROFILES_ACTIVE: "prd"
-  SPRING_DATASOURCE_URL: "jdbc:postgresql://rds-postgres.internal:5432/work_order_db"
-  KAFKA_BOOTSTRAP_SERVERS: "kafka-cluster-kafka-bootstrap.kafka.svc.cluster.local:9092"
+  SPRING_DATASOURCE_URL: "jdbc:postgresql://work-order-db-prd.ck6ly7e0ierf.us-east-1.rds.amazonaws.com:5432/work_order_db"
+  KAFKA_BOOTSTRAP_SERVERS: "kafka-cluster-kafka-bootstrap.infra-kafka.svc.cluster.local:9092"

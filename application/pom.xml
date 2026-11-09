@@ -63,6 +63,11 @@
             <groupId>org.springframework.kafka</groupId>
             <artifactId>spring-kafka</artifactId>
         </dependency>
+        <dependency>
+            <groupId>org.springframework.cloud</groupId>
+            <artifactId>spring-cloud-stream</artifactId>
+            <version>4.1.3</version>
+        </dependency>
 
         <!-- Persistence & Migration -->
         <dependency>
@@ -158,7 +163,7 @@
                             <goal>generate</goal>
                         </goals>
                         <configuration>
-                            <skip>true</skip>
+                            <skip>false</skip>
                             <inputSpec>${project.basedir}/src/main/resources/contracts/openapi.yaml</inputSpec>
                             <generatorName>spring</generatorName>
                             <apiPackage>br.com.fiap.phase4.workorder.adapter.in.web.api</apiPackage>
@@ -176,6 +181,60 @@
                 </executions>
             </plugin>
 
+            <!-- ZenWave AsyncAPI Generator for Event-Driven Inbound & Outbound Interfaces -->
+            <plugin>
+                <groupId>io.github.zenwave360.zenwave-sdk</groupId>
+                <artifactId>zenwave-sdk-maven-plugin</artifactId>
+                <version>1.7.1</version>
+                <executions>
+                    <execution>
+                        <id>generate-asyncapi-interfaces</id>
+                        <phase>generate-sources</phase>
+                        <goals>
+                            <goal>generate</goal>
+                        </goals>
+                        <configuration>
+                            <generatorName>spring-cloud-streams3</generatorName>
+                            <inputSpec>${project.basedir}/src/main/resources/contracts/asyncapi.yaml</inputSpec>
+                            <targetFolder>${project.build.directory}/generated-sources/asyncapi</targetFolder>
+                            <configOptions>
+                                <role>provider</role>
+                                <style>imperative</style>
+                                <apiPackage>br.com.fiap.phase4.workorder.adapter.in.kafka.api</apiPackage>
+                                <modelPackage>br.com.fiap.phase4.workorder.adapter.in.kafka.dto</modelPackage>
+                            </configOptions>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>generate-asyncapi-dtos</id>
+                        <phase>generate-sources</phase>
+                        <goals>
+                            <goal>generate</goal>
+                        </goals>
+                        <configuration>
+                            <generatorName>jsonschema2pojo</generatorName>
+                            <inputSpec>${project.basedir}/src/main/resources/contracts/asyncapi.yaml</inputSpec>
+                            <targetFolder>${project.build.directory}/generated-sources/asyncapi</targetFolder>
+                            <configOptions>
+                                <modelPackage>br.com.fiap.phase4.workorder.adapter.in.kafka.dto</modelPackage>
+                            </configOptions>
+                        </configuration>
+                    </execution>
+                </executions>
+                <dependencies>
+                    <dependency>
+                        <groupId>io.github.zenwave360.zenwave-sdk.plugins</groupId>
+                        <artifactId>asyncapi-spring-cloud-streams3</artifactId>
+                        <version>1.7.1</version>
+                    </dependency>
+                    <dependency>
+                        <groupId>io.github.zenwave360.zenwave-sdk.plugins</groupId>
+                        <artifactId>asyncapi-jsonschema2pojo</artifactId>
+                        <version>1.7.1</version>
+                    </dependency>
+                </dependencies>
+            </plugin>
+
             <!-- Build Helper Plugin to include generated sources -->
             <plugin>
                 <groupId>org.codehaus.mojo</groupId>
@@ -191,6 +250,7 @@
                         <configuration>
                             <sources>
                                 <source>${project.build.directory}/generated-sources/openapi/src/main/java</source>
+                                <source>${project.build.directory}/generated-sources/asyncapi/src/main/java</source>
                             </sources>
                         </configuration>
                     </execution>

@@ -127,6 +127,17 @@ jobs:
         run: |
           aws eks update-kubeconfig --name "${{ env.EKS_CLUSTER_NAME }}" --region "${{ env.AWS_REGION }}"
 
+      - name: Synchronize Database Credentials from AWS Secrets Manager
+        run: |
+          SECRET_JSON=$(aws secretsmanager get-secret-value --secret-id work-order-db-prd-credentials-prd --region "${{ env.AWS_REGION }}" --query SecretString --output text)
+          DB_USER=$(echo "$SECRET_JSON" | jq -r '.username')
+          DB_PASS=$(echo "$SECRET_JSON" | jq -r '.password')
+          kubectl create secret generic work-order-db-credentials \
+            --namespace default \
+            --from-literal=username="$DB_USER" \
+            --from-literal=password="$DB_PASS" \
+            --dry-run=client -o yaml | kubectl apply -f -
+
       - name: Deploy Service to Amazon EKS via Helm
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
