@@ -15,7 +15,10 @@ import org.springframework.stereotype.Service;
 
 import java.util.UUID;
 
+import org.springframework.transaction.annotation.Transactional;
+
 @Service
+@Transactional
 @RequiredArgsConstructor
 public class VehicleService implements CreateVehicleUseCase, GetVehicleUseCase, UpdateVehicleUseCase, DeleteVehicleUseCase {
 
