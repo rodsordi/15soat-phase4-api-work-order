@@ -63,11 +63,6 @@
             <groupId>org.springframework.kafka</groupId>
             <artifactId>spring-kafka</artifactId>
         </dependency>
-        <dependency>
-            <groupId>org.springframework.cloud</groupId>
-            <artifactId>spring-cloud-stream</artifactId>
-            <version>4.3.0</version>
-        </dependency>
 
         <!-- Persistence & Migration -->
         <dependency>
@@ -191,24 +186,6 @@
                 <artifactId>zenwave-sdk-maven-plugin</artifactId>
                 <version>1.7.1</version>
                 <executions>
-                    <execution>
-                        <id>generate-asyncapi-interfaces</id>
-                        <phase>generate-sources</phase>
-                        <goals>
-                            <goal>generate</goal>
-                        </goals>
-                        <configuration>
-                            <generatorName>spring-cloud-streams3</generatorName>
-                            <inputSpec>${project.basedir}/src/main/resources/contracts/asyncapi.yaml</inputSpec>
-                            <targetFolder>${project.build.directory}/generated-sources/asyncapi</targetFolder>
-                            <configOptions>
-                                <role>provider</role>
-                                <style>imperative</style>
-                                <apiPackage>br.com.fiap.phase4.workorder.adapter.in.kafka.api</apiPackage>
-                                <modelPackage>br.com.fiap.phase4.workorder.adapter.in.kafka.dto</modelPackage>
-                            </configOptions>
-                        </configuration>
-                    </execution>
                     <execution>
                         <id>generate-asyncapi-dtos</id>
                         <phase>generate-sources</phase>

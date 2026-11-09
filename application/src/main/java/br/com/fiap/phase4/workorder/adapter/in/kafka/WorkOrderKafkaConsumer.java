@@ -2,8 +2,6 @@ package br.com.fiap.phase4.workorder.adapter.in.kafka;
 
 import br.com.fiap.phase4.commons.kafka.event.EventEnvelope;
 import br.com.fiap.phase4.commons.kafka.tracing.KafkaTraceContextUtils;
-import br.com.fiap.phase4.workorder.adapter.in.kafka.api.IConsumeExecutionCompletedConsumerService;
-import br.com.fiap.phase4.workorder.adapter.in.kafka.api.IConsumePaymentFailedConsumerService;
 import br.com.fiap.phase4.workorder.adapter.in.kafka.dto.ExecutionCompletedPayload;
 import br.com.fiap.phase4.workorder.adapter.in.kafka.dto.ExecutionFailedPayload;
 import br.com.fiap.phase4.workorder.adapter.in.kafka.dto.PaymentFailedPayload;
@@ -21,37 +19,29 @@ import java.util.UUID;
 @Slf4j
 @Component
 @RequiredArgsConstructor
-public class WorkOrderKafkaConsumer implements IConsumeExecutionCompletedConsumerService, IConsumePaymentFailedConsumerService {
+public class WorkOrderKafkaConsumer {
 
     private final UpdateWorkOrderStatusUseCase updateWorkOrderStatusUseCase;
 
-    @Override
-    public void consumeExecutionCompleted(ExecutionCompletedPayload payload, ExecutionCompletedPayloadHeaders headers) {
+    public void processExecutionCompleted(ExecutionCompletedPayload payload) {
         if (payload != null && payload.getWorkOrderId() != null) {
             log.info("Saga Completion: Finalizing Work Order {} via consumer contract", payload.getWorkOrderId());
             updateWorkOrderStatusUseCase.updateStatus(payload.getWorkOrderId(), WorkOrderStatus.COMPLETED, "Repair completed", null);
         }
     }
 
-    @Override
-    public void consumeExecutionCompleted(ExecutionFailedPayload payload, ExecutionFailedPayloadHeaders headers) {
+    public void processExecutionFailed(ExecutionFailedPayload payload) {
         if (payload != null && payload.getWorkOrderId() != null) {
             log.warn("Saga Rollback: Canceling Work Order {} via consumer contract", payload.getWorkOrderId());
             updateWorkOrderStatusUseCase.updateStatus(payload.getWorkOrderId(), WorkOrderStatus.CANCELED, payload.getReason(), null);
         }
     }
 
-    @Override
-    public void consumePaymentFailed(PaymentFailedPayload payload, PaymentFailedPayloadHeaders headers) {
+    public void processPaymentFailed(PaymentFailedPayload payload) {
         if (payload != null && payload.getWorkOrderId() != null) {
             log.warn("Saga Rollback Triggered: Rejecting Work Order {} via consumer contract", payload.getWorkOrderId());
             updateWorkOrderStatusUseCase.updateStatus(payload.getWorkOrderId(), WorkOrderStatus.PAYMENT_REJECTED, payload.getReason(), null);
         }
-    }
-
-    @Override
-    public void defaultHandler(Object payload, Map<String, Object> headers) {
-        log.warn("Unhandled message payload: {}", payload != null ? payload.getClass().getName() : null);
     }
 
     @KafkaListener(topics = "payment-events", groupId = "work-order-payment-group")
@@ -73,7 +63,7 @@ public class WorkOrderKafkaConsumer implements IConsumeExecutionCompletedConsume
             PaymentFailedPayload payload = new PaymentFailedPayload()
                     .withWorkOrderId(workOrderId)
                     .withReason(reason);
-            consumePaymentFailed(payload, null);
+            processPaymentFailed(payload);
         }
     }
 
@@ -93,7 +83,7 @@ public class WorkOrderKafkaConsumer implements IConsumeExecutionCompletedConsume
             UUID workOrderId = UUID.fromString(envelope.payload().get("workOrderId").toString());
             log.info("Saga Completion: Finalizing Work Order {} after successful repair", workOrderId);
             ExecutionCompletedPayload payload = new ExecutionCompletedPayload().withWorkOrderId(workOrderId);
-            consumeExecutionCompleted(payload, (ExecutionCompletedPayloadHeaders) null);
+            processExecutionCompleted(payload);
         } else if ("ExecutionFailedEvent".equalsIgnoreCase(eventType)) {
             UUID workOrderId = UUID.fromString(envelope.payload().get("workOrderId").toString());
             String reason = String.valueOf(envelope.payload().getOrDefault("reason", "Repair execution aborted"));
@@ -101,7 +91,7 @@ public class WorkOrderKafkaConsumer implements IConsumeExecutionCompletedConsume
             ExecutionFailedPayload payload = new ExecutionFailedPayload()
                     .withWorkOrderId(workOrderId)
                     .withReason(reason);
-            consumeExecutionCompleted(payload, (ExecutionFailedPayloadHeaders) null);
+            processExecutionFailed(payload);
         }
     }
 }
