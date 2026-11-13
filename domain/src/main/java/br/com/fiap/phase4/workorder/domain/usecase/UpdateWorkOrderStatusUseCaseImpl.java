@@ -11,10 +11,12 @@ import br.com.fiap.phase4.workorder.domain.port.out.WorkOrderEventPublisherPort;
 import br.com.fiap.phase4.workorder.domain.port.out.WorkOrderRepositoryPort;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.UUID;
 
 @Service
+@Transactional
 @RequiredArgsConstructor
 public class UpdateWorkOrderStatusUseCaseImpl implements UpdateWorkOrderStatusUseCase {
 
