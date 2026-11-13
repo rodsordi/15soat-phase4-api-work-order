@@ -34,7 +34,6 @@
     <modules>
         <module>domain</module>
         <module>application</module>
-        <module>iandt</module>
     </modules>
 
     <dependencyManagement>
@@ -152,4 +151,19 @@
             </snapshots>
         </repository>
     </repositories>
+
+    <profiles>
+        <profile>
+            <id>integrationTests</id>
+            <activation>
+                <property>
+                    <name>integrationTests</name>
+                    <value>true</value>
+                </property>
+            </activation>
+            <modules>
+                <module>iandt</module>
+            </modules>
+        </profile>
+    </profiles>
 </project>
