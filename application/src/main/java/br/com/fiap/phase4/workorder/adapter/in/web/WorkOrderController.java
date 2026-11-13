@@ -19,6 +19,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.slf4j.MDC;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.time.OffsetDateTime;
@@ -47,6 +48,7 @@ public class WorkOrderController implements WorkOrderApi {
     }
 
     @Override
+    @Transactional(readOnly = true)
     public ResponseEntity<WorkOrderDetailedResponse> getWorkOrderById(UUID id) {
         log.info("Received request to get work order by ID: {}", id);
         WorkOrder workOrder = getWorkOrderUseCase.getById(id);
@@ -54,6 +56,7 @@ public class WorkOrderController implements WorkOrderApi {
     }
 
     @Override
+    @Transactional(readOnly = true)
     public ResponseEntity<PagedWorkOrderResponse> listWorkOrders(
             WorkOrderStatus status, String customerDocument, String licensePlate,
             OffsetDateTime createdFrom, OffsetDateTime createdTo,
@@ -75,6 +78,7 @@ public class WorkOrderController implements WorkOrderApi {
     }
 
     @Override
+    @Transactional
     public ResponseEntity<WorkOrderDetailedResponse> updateWorkOrderStatus(UUID id, UpdateWorkOrderStatusRequest request) {
         log.info("Received request to update status for work order: {}", id);
         br.com.fiap.phase4.workorder.domain.model.WorkOrderStatus domainStatus =

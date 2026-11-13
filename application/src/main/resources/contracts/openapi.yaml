@@ -1386,6 +1386,7 @@ components:
         - APPROVED
         - EXECUTING
         - COMPLETED
+        - PAID
         - DELIVERED
         - CANCELED
         - PAYMENT_REJECTED
@@ -1399,7 +1400,8 @@ components:
         - `WAITING_APPROVAL`: Orçamento emitido, aguardando aprovação do cliente. Próximos válidos: `APPROVED`, `PAYMENT_REJECTED` ou `CANCELED`.
         - `APPROVED`: Orçamento aprovado e pagamento pré-autorizado. Próximo válido: `EXECUTING`.
         - `EXECUTING`: Manutenção física em andamento com alocação de peças. Próximo válido: `COMPLETED`.
-        - `COMPLETED`: Manutenções finalizadas e testes de qualidade aprovados. Próximo válido: `DELIVERED`.
+        - `COMPLETED`: Manutenções finalizadas e testes de qualidade aprovados. Próximo válido: `PAID` ou `DELIVERED`.
+        - `PAID`: Pagamento confirmado e liquidado via webhook do gateway de pagamento. Próximo válido: `DELIVERED`.
         - `DELIVERED`: Veículo liberado e entregue ao proprietário (Estado Terminal).
         - `CANCELED`: Ordem cancelada por desistência ou inviabilidade técnica (Estado Terminal).
         - `PAYMENT_REJECTED`: Pagamento não aprovado ou recusado pela operadora. Próximos válidos: `WAITING_APPROVAL` ou `CANCELED`.
