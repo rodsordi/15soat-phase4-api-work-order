@@ -9,20 +9,39 @@ import br.com.fiap.phase4.workorder.domain.port.in.UpdateWorkOrderStatusUseCase;
 import br.com.fiap.phase4.workorder.domain.port.out.MaterialRepositoryPort;
 import br.com.fiap.phase4.workorder.domain.port.out.WorkOrderEventPublisherPort;
 import br.com.fiap.phase4.workorder.domain.port.out.WorkOrderRepositoryPort;
-import lombok.RequiredArgsConstructor;
+import br.com.fiap.phase4.workorder.domain.port.out.WorkOrderStatusMetricsPort;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Duration;
 import java.util.UUID;
 
 @Service
 @Transactional
-@RequiredArgsConstructor
 public class UpdateWorkOrderStatusUseCaseImpl implements UpdateWorkOrderStatusUseCase {
 
     private final WorkOrderRepositoryPort repository;
     private final WorkOrderEventPublisherPort eventPublisher;
     private final MaterialRepositoryPort materialRepository;
+    private final WorkOrderStatusMetricsPort metricsPort;
+
+    public UpdateWorkOrderStatusUseCaseImpl(WorkOrderRepositoryPort repository,
+                                            WorkOrderEventPublisherPort eventPublisher,
+                                            MaterialRepositoryPort materialRepository) {
+        this(repository, eventPublisher, materialRepository, null);
+    }
+
+    @Autowired
+    public UpdateWorkOrderStatusUseCaseImpl(WorkOrderRepositoryPort repository,
+                                            WorkOrderEventPublisherPort eventPublisher,
+                                            MaterialRepositoryPort materialRepository,
+                                            @Autowired(required = false) WorkOrderStatusMetricsPort metricsPort) {
+        this.repository = repository;
+        this.eventPublisher = eventPublisher;
+        this.materialRepository = materialRepository;
+        this.metricsPort = metricsPort;
+    }
 
     @Override
     public WorkOrder updateStatus(UUID workOrderId, WorkOrderStatus newStatus, String reason, String traceId) {
@@ -30,6 +49,7 @@ public class UpdateWorkOrderStatusUseCaseImpl implements UpdateWorkOrderStatusUs
                 .orElseThrow(() -> new ResourceNotFoundException("WorkOrder", workOrderId));
 
         WorkOrderStatus previousStatus = workOrder.getStatus();
+        Duration durationInPreviousStatus = workOrder.calculateCurrentStatusDuration();
 
         switch (newStatus) {
             case DIAGNOSING -> {
@@ -82,6 +102,10 @@ public class UpdateWorkOrderStatusUseCaseImpl implements UpdateWorkOrderStatusUs
                 workOrder.transitionTo(newStatus, reason, null);
                 repository.save(workOrder);
             }
+        }
+
+        if (metricsPort != null && previousStatus != null && durationInPreviousStatus != null && !durationInPreviousStatus.isNegative()) {
+            metricsPort.recordStatusDuration(previousStatus, durationInPreviousStatus);
         }
 
         return workOrder;

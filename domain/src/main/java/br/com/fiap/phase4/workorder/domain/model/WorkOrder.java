@@ -22,6 +22,7 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 import java.math.BigDecimal;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -206,6 +207,15 @@ public class WorkOrder {
 
     public List<WorkOrderStatusHistory> getStatusHistory() {
         return Collections.unmodifiableList(statusHistory);
+    }
+
+    public Duration calculateCurrentStatusDuration() {
+        Instant from = this.updatedAt != null ? this.updatedAt : this.createdAt;
+        if (from == null) {
+            return Duration.ZERO;
+        }
+        Instant now = Instant.now();
+        return now.isAfter(from) ? Duration.between(from, now) : Duration.ZERO;
     }
 
     public void addService(UUID serviceId, String itemName, String itemCode, Money unitPrice, int quantity) {
