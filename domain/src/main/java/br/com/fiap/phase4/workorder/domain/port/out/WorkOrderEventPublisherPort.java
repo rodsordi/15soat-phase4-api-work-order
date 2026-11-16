@@ -7,4 +7,10 @@ public interface WorkOrderEventPublisherPort {
     void publishWorkOrderApproved(WorkOrder workOrder, String traceId);
 
     void publishWorkOrderCompleted(WorkOrder workOrder, String traceId);
+
+    void publishWorkOrderEstimateRequested(WorkOrder workOrder, String traceId);
+
+    default void publishWorkOrderBudgetRequested(WorkOrder workOrder, String traceId) {
+        publishWorkOrderEstimateRequested(workOrder, traceId);
+    }
 }

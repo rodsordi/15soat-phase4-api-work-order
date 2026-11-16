@@ -94,4 +94,28 @@ public class WorkOrderKafkaConsumer {
             processExecutionFailed(payload);
         }
     }
+
+    @KafkaListener(topics = "billing-events", groupId = "work-order-billing-group")
+    public void consumeBillingEvents(ConsumerRecord<String, EventEnvelope<Map<String, Object>>> record) {
+        String traceId = KafkaTraceContextUtils.extractTraceId(record.headers());
+        EventEnvelope<Map<String, Object>> envelope = record.value();
+
+        if (envelope == null || envelope.metadata() == null) {
+            return;
+        }
+
+        String eventType = envelope.metadata().eventType();
+        log.info("Received event on billing-events: {} [traceId: {}]", eventType, traceId);
+
+        if ("EstimateApprovedEvent".equalsIgnoreCase(eventType)) {
+            UUID workOrderId = UUID.fromString(envelope.payload().get("workOrderId").toString());
+            log.info("Estimate approved: Releasing Work Order {} to APPROVED status", workOrderId);
+            updateWorkOrderStatusUseCase.updateStatus(workOrderId, WorkOrderStatus.APPROVED, "Estimate approved by customer", traceId);
+        } else if ("EstimateRejectedEvent".equalsIgnoreCase(eventType)) {
+            UUID workOrderId = UUID.fromString(envelope.payload().get("workOrderId").toString());
+            String reason = String.valueOf(envelope.payload().getOrDefault("reason", "Estimate rejected by customer"));
+            log.warn("Estimate rejected: Canceling Work Order {} (reason: {})", workOrderId, reason);
+            updateWorkOrderStatusUseCase.updateStatus(workOrderId, WorkOrderStatus.CANCELED, reason, traceId);
+        }
+    }
 }

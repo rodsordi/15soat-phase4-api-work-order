@@ -71,4 +71,55 @@ public class WorkOrderKafkaPublisherAdapter implements WorkOrderEventPublisherPo
         kafkaTemplate.send(record);
         log.info("Published WorkOrderCompletedEvent for OS ID: {} on topic: {}", workOrder.getId(), WORK_ORDER_EVENTS_TOPIC);
     }
+
+    @Override
+    public void publishWorkOrderEstimateRequested(WorkOrder workOrder, String traceId) {
+        java.util.List<Map<String, Object>> items = new java.util.ArrayList<>();
+        if (workOrder.getServices() != null) {
+            for (var s : workOrder.getServices()) {
+                items.add(Map.of(
+                        "itemType", "SERVICE",
+                        "itemCodeOrSku", s.getItemCode() != null ? s.getItemCode() : "SRV",
+                        "name", s.getItemName() != null ? s.getItemName() : "Service",
+                        "unitPrice", s.getUnitPrice() != null ? s.getUnitPrice().amount().doubleValue() : 0.0,
+                        "quantity", s.getQuantity() != null ? s.getQuantity() : 1
+                ));
+            }
+        }
+        if (workOrder.getMaterials() != null) {
+            for (var m : workOrder.getMaterials()) {
+                items.add(Map.of(
+                        "itemType", "MATERIAL",
+                        "itemCodeOrSku", m.getItemSku() != null ? m.getItemSku() : "MAT",
+                        "name", m.getItemName() != null ? m.getItemName() : "Material",
+                        "unitPrice", m.getUnitPrice() != null ? m.getUnitPrice().amount().doubleValue() : 0.0,
+                        "quantity", m.getQuantity() != null ? m.getQuantity() : 1
+                ));
+            }
+        }
+
+        Map<String, Object> payload = Map.of(
+                "workOrderId", workOrder.getId().toString(),
+                "customerDocument", workOrder.getCustomerDocument() != null ? workOrder.getCustomerDocument().value() : "",
+                "totalAmount", workOrder.getTotalAmount() != null ? workOrder.getTotalAmount().amount().doubleValue() : 0.0,
+                "items", items
+        );
+
+        var envelope = EventEnvelope.of(
+                "WorkOrderEstimateRequestedEvent",
+                "15soat-phase4-api-work-order",
+                traceId,
+                payload
+        );
+
+        ProducerRecord<String, Object> record = new ProducerRecord<>(
+                WORK_ORDER_EVENTS_TOPIC,
+                workOrder.getId().toString(),
+                envelope
+        );
+
+        KafkaTraceContextUtils.injectTraceContext(record.headers(), traceId, null);
+        kafkaTemplate.send(record);
+        log.info("Published WorkOrderEstimateRequestedEvent for OS ID: {} on topic: {}", workOrder.getId(), WORK_ORDER_EVENTS_TOPIC);
+    }
 }

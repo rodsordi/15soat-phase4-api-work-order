@@ -59,6 +59,7 @@ public class UpdateWorkOrderStatusUseCaseImpl implements UpdateWorkOrderStatusUs
             case WAITING_APPROVAL -> {
                 workOrder.finishDiagnosisAndSendBudget();
                 repository.save(workOrder);
+                eventPublisher.publishWorkOrderEstimateRequested(workOrder, traceId);
             }
             case APPROVED -> {
                 workOrder.approve();
