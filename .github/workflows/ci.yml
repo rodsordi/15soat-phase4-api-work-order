@@ -61,7 +61,7 @@ jobs:
             -Dsonar.token=$SONAR_TOKEN \
             -Dsonar.organization=rodsordi \
             -Dsonar.projectKey=rodsordi_15soat-phase4-api-work-order \
-            -Dsonar.qualitygate.wait=false
+            -Dsonar.qualitygate.wait=true
         continue-on-error: true
 
       - name: Package Executable JAR

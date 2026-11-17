@@ -1,9 +1,16 @@
 package br.com.fiap.phase4.workorder.domain;
 
+import br.com.fiap.phase4.commons.domain.exception.DomainException;
 import br.com.fiap.phase4.commons.domain.exception.ValidationException;
+import br.com.fiap.phase4.commons.domain.vo.CpfOrCnpj;
+import br.com.fiap.phase4.commons.domain.vo.LicensePlate;
+import br.com.fiap.phase4.commons.domain.vo.Money;
+import br.com.fiap.phase4.workorder.domain.model.Customer;
+import br.com.fiap.phase4.workorder.domain.model.Vehicle;
 import br.com.fiap.phase4.workorder.domain.model.WorkOrder;
 import br.com.fiap.phase4.workorder.domain.model.WorkOrderStatus;
 import br.com.fiap.phase4.workorder.domain.port.out.CustomerRepositoryPort;
+import br.com.fiap.phase4.workorder.domain.port.out.MaterialRepositoryPort;
 import br.com.fiap.phase4.workorder.domain.port.out.VehicleRepositoryPort;
 import br.com.fiap.phase4.workorder.domain.port.out.WorkOrderEventPublisherPort;
 import br.com.fiap.phase4.workorder.domain.port.out.WorkOrderRepositoryPort;
@@ -17,6 +24,10 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.math.BigDecimal;
+import java.time.Duration;
+import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -42,7 +53,7 @@ class WorkOrderDomainTest {
     private VehicleRepositoryPort vehicleRepository;
 
     @Mock
-    private br.com.fiap.phase4.workorder.domain.port.out.MaterialRepositoryPort materialRepository;
+    private MaterialRepositoryPort materialRepository;
 
     private CreateWorkOrderUseCaseImpl createUseCase;
     private UpdateWorkOrderStatusUseCaseImpl updateUseCase;
@@ -88,8 +99,8 @@ class WorkOrderDomainTest {
         void shouldApproveAndPublishEvent() {
             UUID id = UUID.randomUUID();
             WorkOrder workOrder = WorkOrder.create(
-                    new br.com.fiap.phase4.commons.domain.vo.CpfOrCnpj("52998224725"),
-                    new br.com.fiap.phase4.commons.domain.vo.LicensePlate("BRA2E19"),
+                    new CpfOrCnpj("52998224725"),
+                    new LicensePlate("BRA2E19"),
                     "Maintenance"
             );
             workOrder.finishDiagnosisAndSendBudget();
@@ -107,14 +118,14 @@ class WorkOrderDomainTest {
         void shouldRejectApprovalBeforeBudgetCalculated() {
             UUID id = UUID.randomUUID();
             WorkOrder workOrder = WorkOrder.create(
-                    new br.com.fiap.phase4.commons.domain.vo.CpfOrCnpj("52998224725"),
-                    new br.com.fiap.phase4.commons.domain.vo.LicensePlate("BRA2E19"),
+                    new CpfOrCnpj("52998224725"),
+                    new LicensePlate("BRA2E19"),
                     "Maintenance"
             );
             when(repository.findById(id)).thenReturn(Optional.of(workOrder));
 
             assertThatThrownBy(() -> updateUseCase.updateStatus(id, WorkOrderStatus.APPROVED, "Approved", "trace-123"))
-                    .isInstanceOf(br.com.fiap.phase4.commons.domain.exception.DomainException.class)
+                    .isInstanceOf(DomainException.class)
                     .hasMessageContaining("Cannot approve work order before budget is generated");
         }
 
@@ -123,8 +134,8 @@ class WorkOrderDomainTest {
         void shouldDeliverCompletedWorkOrder() {
             UUID id = UUID.randomUUID();
             WorkOrder workOrder = WorkOrder.create(
-                    new br.com.fiap.phase4.commons.domain.vo.CpfOrCnpj("52998224725"),
-                    new br.com.fiap.phase4.commons.domain.vo.LicensePlate("BRA2E19"),
+                    new CpfOrCnpj("52998224725"),
+                    new LicensePlate("BRA2E19"),
                     "Maintenance"
             );
             workOrder.finishDiagnosisAndSendBudget();
@@ -146,15 +157,15 @@ class WorkOrderDomainTest {
         void shouldRejectExecutionWithoutApproval() {
             UUID id = UUID.randomUUID();
             WorkOrder workOrder = WorkOrder.create(
-                    new br.com.fiap.phase4.commons.domain.vo.CpfOrCnpj("52998224725"),
-                    new br.com.fiap.phase4.commons.domain.vo.LicensePlate("BRA2E19"),
+                    new CpfOrCnpj("52998224725"),
+                    new LicensePlate("BRA2E19"),
                     "Maintenance"
             );
             workOrder.finishDiagnosisAndSendBudget();
             when(repository.findById(id)).thenReturn(Optional.of(workOrder));
 
             assertThatThrownBy(() -> updateUseCase.updateStatus(id, WorkOrderStatus.EXECUTING, "Start repairs", "trace-123"))
-                    .isInstanceOf(br.com.fiap.phase4.commons.domain.exception.DomainException.class)
+                    .isInstanceOf(DomainException.class)
                     .hasMessageContaining("Cannot execute work order before budget is approved");
         }
 
@@ -163,8 +174,8 @@ class WorkOrderDomainTest {
         void shouldRejectDeliveryBeforePayment() {
             UUID id = UUID.randomUUID();
             WorkOrder workOrder = WorkOrder.create(
-                    new br.com.fiap.phase4.commons.domain.vo.CpfOrCnpj("52998224725"),
-                    new br.com.fiap.phase4.commons.domain.vo.LicensePlate("BRA2E19"),
+                    new CpfOrCnpj("52998224725"),
+                    new LicensePlate("BRA2E19"),
                     "Maintenance"
             );
             workOrder.finishDiagnosisAndSendBudget();
@@ -174,7 +185,7 @@ class WorkOrderDomainTest {
             when(repository.findById(id)).thenReturn(Optional.of(workOrder));
 
             assertThatThrownBy(() -> updateUseCase.updateStatus(id, WorkOrderStatus.DELIVERED, "Deliver", "trace-123"))
-                    .isInstanceOf(br.com.fiap.phase4.commons.domain.exception.DomainException.class)
+                    .isInstanceOf(DomainException.class)
                     .hasMessageContaining("Work order cannot be delivered before payment is confirmed");
         }
 
@@ -183,8 +194,8 @@ class WorkOrderDomainTest {
         void shouldRejectCancellationOfFinalizedWorkOrder() {
             UUID id = UUID.randomUUID();
             WorkOrder workOrder = WorkOrder.create(
-                    new br.com.fiap.phase4.commons.domain.vo.CpfOrCnpj("52998224725"),
-                    new br.com.fiap.phase4.commons.domain.vo.LicensePlate("BRA2E19"),
+                    new CpfOrCnpj("52998224725"),
+                    new LicensePlate("BRA2E19"),
                     "Maintenance"
             );
             workOrder.finishDiagnosisAndSendBudget();
@@ -195,7 +206,7 @@ class WorkOrderDomainTest {
             when(repository.findById(id)).thenReturn(Optional.of(workOrder));
 
             assertThatThrownBy(() -> updateUseCase.updateStatus(id, WorkOrderStatus.CANCELED, "Client requested cancellation", "trace-123"))
-                    .isInstanceOf(br.com.fiap.phase4.commons.domain.exception.DomainException.class)
+                    .isInstanceOf(DomainException.class)
                     .hasMessageContaining("Cannot cancel an already finalized work order");
         }
 
@@ -205,17 +216,17 @@ class WorkOrderDomainTest {
             UUID id = UUID.randomUUID();
             UUID materialId = UUID.randomUUID();
             WorkOrder workOrder = WorkOrder.create(
-                    new br.com.fiap.phase4.commons.domain.vo.CpfOrCnpj("52998224725"),
-                    new br.com.fiap.phase4.commons.domain.vo.LicensePlate("BRA2E19"),
+                    new CpfOrCnpj("52998224725"),
+                    new LicensePlate("BRA2E19"),
                     "Maintenance"
             );
-            workOrder.addMaterial(materialId, "Brake Pad", "PART-01", br.com.fiap.phase4.commons.domain.vo.Money.of(new java.math.BigDecimal("50.00")), 2);
+            workOrder.addMaterial(materialId, "Brake Pad", "PART-01", Money.of(new BigDecimal("50.00")), 2);
             workOrder.finishDiagnosisAndSendBudget();
 
             br.com.fiap.phase4.workorder.domain.model.Material material = br.com.fiap.phase4.workorder.domain.model.Material.create(
                     "PART-01", "Brake Pad", "Desc",
-                    br.com.fiap.phase4.commons.domain.vo.Money.of(new java.math.BigDecimal("20.00")),
-                    br.com.fiap.phase4.commons.domain.vo.Money.of(new java.math.BigDecimal("50.00")),
+                    Money.of(new BigDecimal("20.00")),
+                    Money.of(new BigDecimal("50.00")),
                     10, 2
             );
 
@@ -228,7 +239,150 @@ class WorkOrderDomainTest {
 
             // Cancel: should release 2 units
             updateUseCase.updateStatus(id, WorkOrderStatus.CANCELED, "Client canceled", "trace-2");
-            assertThat(material.getReservedQuantity()).isEqualTo(0);
+            assertThat(material.getReservedQuantity()).isZero();
+        }
+    }
+
+    @Nested
+    @DisplayName("WorkOrder Entity Domain Methods Tests")
+    class WorkOrderEntityDomainMethodsTests {
+
+        @Test
+        @DisplayName("Should add services and calculate total amount correctly")
+        void shouldAddServicesAndCalculateTotal() {
+            // Arrange
+            WorkOrder workOrder = WorkOrder.create(
+                    new CpfOrCnpj("52998224725"),
+                    new LicensePlate("BRA2E19"),
+                    "Maintenance"
+            );
+            UUID serviceId1 = UUID.randomUUID();
+            UUID serviceId2 = UUID.randomUUID();
+
+            // Act
+            workOrder.addService(serviceId1, "Oil Change", "SRV-01", Money.of(new BigDecimal("100.00")), 1);
+            workOrder.addService(serviceId2, Money.of(new BigDecimal("50.00")), 2);
+
+            // Assert
+            assertThat(workOrder.getServices()).hasSize(2);
+            assertThat(workOrder.getTotalAmount()).isEqualTo(Money.of(new BigDecimal("200.00")));
+        }
+
+        @Test
+        @DisplayName("Should add materials and calculate total amount correctly")
+        void shouldAddMaterialsAndCalculateTotal() {
+            // Arrange
+            WorkOrder workOrder = WorkOrder.create(
+                    new CpfOrCnpj("52998224725"),
+                    new LicensePlate("BRA2E19"),
+                    "Maintenance"
+            );
+            UUID matId1 = UUID.randomUUID();
+            UUID matId2 = UUID.randomUUID();
+
+            // Act
+            workOrder.addMaterial(matId1, "Filter", "MAT-01", Money.of(new BigDecimal("30.00")), 1);
+            workOrder.addMaterial(matId2, Money.of(new BigDecimal("15.00")), 2);
+
+            // Assert
+            assertThat(workOrder.getMaterials()).hasSize(2);
+            assertThat(workOrder.getTotalAmount()).isEqualTo(Money.of(new BigDecimal("60.00")));
+        }
+
+        @Test
+        @DisplayName("Should handle setTotalAmount, setCustomer and setVehicle")
+        void shouldHandleSetters() {
+            // Arrange
+            Customer customer = Customer.create("Rodrigo Sordi", "rodrigo@fiap.com.br", "52998224725");
+            Vehicle vehicle = Vehicle.create(customer, "BRA2E19", "Toyota", "Corolla", 2022);
+            WorkOrder workOrder = WorkOrder.create(customer, vehicle, "Full Service");
+
+            // Act
+            workOrder.setCustomer(customer);
+            workOrder.setVehicle(vehicle);
+            workOrder.setTotalAmount(Money.of(new BigDecimal("350.00")));
+
+            // Assert
+            assertThat(workOrder.getCustomer()).isSameAs(customer);
+            assertThat(workOrder.getVehicle()).isSameAs(vehicle);
+            assertThat(workOrder.getCustomerDocument().value()).isEqualTo("52998224725");
+            assertThat(workOrder.getLicensePlate().value()).isEqualTo("BRA2E19");
+            assertThat(workOrder.getTotalAmount()).isEqualTo(Money.of(new BigDecimal("350.00")));
+        }
+
+        @Test
+        @DisplayName("Should return Duration.ZERO or positive duration from calculateCurrentStatusDuration()")
+        void shouldCalculateStatusDuration() {
+            // Arrange
+            WorkOrder workOrder = WorkOrder.create(
+                    new CpfOrCnpj("52998224725"),
+                    new LicensePlate("BRA2E19"),
+                    "Test"
+            );
+
+            // Act
+            Duration duration = workOrder.calculateCurrentStatusDuration();
+
+            // Assert
+            assertThat(duration).isNotNull();
+            assertThat(duration.isNegative()).isFalse();
+        }
+
+        @Test
+        @DisplayName("Should not duplicate history when transitionTo same status")
+        void shouldNotDuplicateHistoryWhenSameStatus() {
+            // Arrange
+            WorkOrder workOrder = WorkOrder.create(
+                    new CpfOrCnpj("52998224725"),
+                    new LicensePlate("BRA2E19"),
+                    "Test"
+            );
+            int initialHistorySize = workOrder.getStatusHistory().size();
+
+            // Act
+            workOrder.transitionTo(WorkOrderStatus.RECEIVED, "Same status", null);
+
+            // Assert
+            assertThat(workOrder.getStatusHistory()).hasSize(initialHistorySize);
+        }
+
+        @Test
+        @DisplayName("Should transition to PAYMENT_REJECTED via rejectPayment()")
+        void shouldRejectPayment() {
+            // Arrange
+            WorkOrder workOrder = WorkOrder.create(
+                    new CpfOrCnpj("52998224725"),
+                    new LicensePlate("BRA2E19"),
+                    "Test"
+            );
+
+            // Act
+            workOrder.rejectPayment("Insufficient funds");
+
+            // Assert
+            assertThat(workOrder.getStatus()).isEqualTo(WorkOrderStatus.PAYMENT_REJECTED);
+        }
+
+        @Test
+        @DisplayName("Should create WorkOrder with 12-parameter constructor")
+        void shouldCreateWith12ParamConstructor() {
+            // Arrange
+            UUID id = UUID.randomUUID();
+            Instant now = Instant.now();
+
+            // Act
+            WorkOrder wo = new WorkOrder(
+                    id, null, null, "52998224725", "BRA2E19",
+                    "Custom description", WorkOrderStatus.RECEIVED,
+                    new BigDecimal("100.00"), List.of(), List.of(),
+                    now, now
+            );
+
+            // Assert
+            assertThat(wo.getId()).isEqualTo(id);
+            assertThat(wo.getDescription()).isEqualTo("Custom description");
+            assertThat(wo.getCreatedAt()).isEqualTo(now);
+            assertThat(wo.getUpdatedAt()).isEqualTo(now);
         }
     }
 }
