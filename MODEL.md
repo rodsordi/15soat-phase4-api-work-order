@@ -6,6 +6,8 @@ Este documento descreve a modelagem de dados relacional do microsserviço de Ges
 
 ## 1. Diagrama Entidade-Relacionamento (MER)
 
+<div style="overflow-x: auto; zoom: 1.5; min-width: 900px;">
+
 ```mermaid
 erDiagram
     %% =========================================================================
@@ -133,6 +135,8 @@ erDiagram
     WORK_ORDER_SERVICE }o--|| SERVICE : "referencia_catalogo"
     WORK_ORDER_MATERIAL }o--|| MATERIAL : "referencia_catalogo"
 ```
+
+</div>
 
 ---
 
