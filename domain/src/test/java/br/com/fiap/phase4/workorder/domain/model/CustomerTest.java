@@ -7,6 +7,9 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 
+import java.time.Instant;
+import java.util.UUID;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
@@ -26,6 +29,15 @@ class CustomerTest {
             assertThat(customer.getDocument()).isEqualTo("52998224725");
             assertThat(customer.getName()).isEqualTo("Rodrigo Sordi");
             assertThat(customer.getEmail()).isEqualTo("rodrigo@fiap.com.br");
+        }
+
+        @Test
+        @DisplayName("Should successfully create customer with valid 14-digit CNPJ")
+        void shouldCreateCustomerWithValidCnpj() {
+            Customer customer = Customer.create("Empresa ABC", "contato@abc.com", "00.000.000/0001-91");
+
+            assertThat(customer).isNotNull();
+            assertThat(customer.getDocument()).isEqualTo("00000000000191");
         }
 
         @Test
@@ -77,6 +89,70 @@ class CustomerTest {
             assertThatThrownBy(() -> new Customer(null, "Rodrigo Sordi", "rodrigo@fiap.com.br", null, null, null))
                     .isInstanceOf(NullPointerException.class)
                     .hasMessageContaining("Customer document is required");
+        }
+    }
+
+    @Nested
+    @DisplayName("Business Methods Tests")
+    class BusinessMethodsTests {
+
+        @Test
+        @DisplayName("Should update customer name and email")
+        void shouldUpdateCustomer() {
+            // Arrange
+            Customer customer = Customer.create("Old Name", "old@fiap.com.br", "52998224725");
+
+            // Act
+            customer.update("New Name", "new@fiap.com.br");
+
+            // Assert
+            assertThat(customer.getName()).isEqualTo("New Name");
+            assertThat(customer.getEmail()).isEqualTo("new@fiap.com.br");
+        }
+
+        @Test
+        @DisplayName("Should ignore blank or null updates")
+        void shouldIgnoreBlankOrNullUpdates() {
+            // Arrange
+            Customer customer = Customer.create("Original Name", "orig@fiap.com.br", "52998224725");
+
+            // Act
+            customer.update("   ", null);
+
+            // Assert
+            assertThat(customer.getName()).isEqualTo("Original Name");
+            assertThat(customer.getEmail()).isEqualTo("orig@fiap.com.br");
+        }
+
+        @Test
+        @DisplayName("Should associate vehicle and maintain bidirectional relationship")
+        void shouldAddVehicle() {
+            // Arrange
+            Customer customer = Customer.create("Rodrigo", "rodrigo@fiap.com.br", "52998224725");
+            Vehicle vehicle = Vehicle.create(customer, "BRA2E19", "Toyota", "Corolla", 2022);
+
+            // Act
+            customer.addVehicle(vehicle);
+
+            // Assert
+            assertThat(customer.getVehicles()).contains(vehicle);
+            assertThat(vehicle.getCustomer()).isSameAs(customer);
+        }
+
+        @Test
+        @DisplayName("Should instantiate full constructor with custom timestamps and ID")
+        void shouldInstantiateWithFullConstructor() {
+            // Arrange
+            UUID id = UUID.randomUUID();
+            Instant now = Instant.now();
+
+            // Act
+            Customer customer = new Customer(id, "Full Name", "full@fiap.com", "52998224725", now, now);
+
+            // Assert
+            assertThat(customer.getId()).isEqualTo(id);
+            assertThat(customer.getCreatedAt()).isEqualTo(now);
+            assertThat(customer.getUpdatedAt()).isEqualTo(now);
         }
     }
 }
